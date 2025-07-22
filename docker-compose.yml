@@ -1,0 +1,118 @@
+# ingestion_kafka_flink/docker-compose.yml
+version: '3.8'
+
+services:
+  zookeeper:
+    image: bitnami/zookeeper:3.8
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    networks:
+      - data-pipeline-net
+
+  # Kafka 服务，依赖外部 ZooKeeper（由 zookeeper 服务提供）
+  kafka:
+    image: bitnami/kafka:3.7.0 # 使用 Bitnami 的 Kafka 镜像，包含了 Kafka 和 ZooKeeper
+    container_name: kafka
+    ports:
+      - "9092:9092" # Kafka 监听端口映射到宿主机，供本地Python生产者访问
+    environment:
+      # 这是最终的解决方案，请注意 KAFKA_CFG_LISTENERS 和 KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP 的变化
+      KAFKA_CFG_LISTENERS: INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: INTERNAL://kafka:9093,EXTERNAL://localhost:9092   #kafka:9093，在docker容器中去访问，而不是在外部了。
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_BROKER_ID: 1
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+    depends_on:
+    - zookeeper
+    networks:
+      - data-pipeline-net # 确保所有服务在同一个网络中
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"  # 访问地址 http://localhost:8080
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9093  # 注意：容器内访问 Kafka，要用容器名 + 内部端口
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    depends_on:
+      - kafka
+      - zookeeper
+    networks:
+      - data-pipeline-net
+
+  # MinIO 服务，模拟S3兼容存储
+  minio:
+    image: quay.io/minio/minio:latest # MinIO官方镜像，永远使用最新的那一款
+    container_name: minio
+    ports:
+      - "9000:9000" # MinIO API 端口
+      - "9001:9001" # MinIO Console Web UI 端口
+    environment:
+      MINIO_ROOT_USER: minioadmin # MinIO管理用户名
+      MINIO_ROOT_PASSWORD: minioadmin # MinIO管理密码
+    volumes:
+      # 将MinIO数据持久化到宿主机项目的 ./minio_data 目录下
+      # Docker会自动创建这个目录
+      - ./minio_data:/data 
+    command: server /data --console-address ":9001" # 启动MinIO服务并指定控制台地址
+    networks:
+      - data-pipeline-net
+
+  # Flink JobManager 服务
+  jobmanager:
+    image: apache/flink:1.17.2-scala_2.12 # 使用官方Flink镜像，确保版本与PyFlink一致
+    container_name: jobmanager
+    ports:
+      - "8081:8081" # Flink Web UI 端口映射到宿主机
+      - "6123:6123" # Job Submission (RPC) Port - 这个是关键！
+    volumes:
+      - ./flink_jobs/target:/opt/flink/usrlib
+      - ./flink_lib:/opt/flink/lib
+    command: jobmanager # 启动JobManager
+    environment:
+      FLINK_PROPERTIES_jobmanager.rpc.address: jobmanager # Flink内部RPC地址
+      # 配置Flink访问MinIO的凭据和端点
+      # Flink容器内部通过服务名 'minio' 访问MinIO
+      FLINK_PROPERTIES_s3.endpoint: http://minio:9000
+      FLINK_PROPERTIES_s3.access-key: minioadmin
+      FLINK_PROPERTIES_s3.secret-key: minioadmin
+      FLINK_PROPERTIES_s3.path.style.access: "true" # MinIO通常需要路径样式访问
+    networks:
+      - data-pipeline-net
+
+  # Flink TaskManager 服务
+  taskmanager:
+    image: apache/flink:1.17.2-scala_2.12 # 官方Flink镜像
+    container_name: taskmanager
+    depends_on:
+      - jobmanager # 确保JobManager先启动
+    volumes:
+      - ./flink_jobs/target:/opt/flink/usrlib
+      - ./flink_lib:/opt/flink/lib
+    command: taskmanager # 启动TaskManager
+    environment:
+      FLINK_PROPERTIES_jobmanager.rpc.address: jobmanager # 连接JobManager
+      FLINK_PROPERTIES_taskmanager.numberOfTaskSlots: 2 # 每个TaskManager的Slot数量
+      # MinIO 配置也需要传递给 TaskManager
+      FLINK_PROPERTIES_s3.endpoint: http://minio:9000
+      FLINK_PROPERTIES_s3.access-key: minioadmin
+      FLINK_PROPERTIES_s3.secret-key: minioadmin
+      FLINK_PROPERTIES_s3.path.style.access: "true"
+    networks:
+      - data-pipeline-net
+
+# 定义一个内部网络，确保所有服务可以互相通信
+networks:
+  data-pipeline-net:
+    driver: bridge
+
+# 定义一个数据卷，用于MinIO的数据持久化
+volumes:
+  minio_data:

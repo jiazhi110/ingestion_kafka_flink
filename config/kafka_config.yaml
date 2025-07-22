@@ -1,0 +1,10 @@
+# ingestion_kafka_flink/config/kafka_config.yaml
+kafka:
+  bootstrap_servers: localhost:9092 # 宿主机访问Kafka
+  topic: user_behavior
+minio:
+  endpoint: http://localhost:9000 # 宿主机访问MinIO Web UI
+  access_key: minioadmin
+  secret_key: minioadmin
+  bucket: flink-bucket
+  output_prefix: user_action/

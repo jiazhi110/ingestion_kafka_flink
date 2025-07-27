@@ -45,7 +45,8 @@ user_visit_action_df = pd.read_csv(os.path.join(project_root, "test_data", "user
 
 # user_visit_action_df.info()
 
-each_action_dfs = user_visit_action_df.head(10)
+each_action_dfs = user_visit_action_df
+# each_action_dfs = user_visit_action_df.head(10)
 
 df = pd.DataFrame()
 

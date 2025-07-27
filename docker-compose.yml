@@ -1,6 +1,3 @@
-# ingestion_kafka_flink/docker-compose.yml
-version: '3.8'
-
 services:
   zookeeper:
     image: bitnami/zookeeper:3.8
@@ -67,43 +64,51 @@ services:
 
   # Flink JobManager 服务
   jobmanager:
-    image: apache/flink:1.17.2-scala_2.12 # 使用官方Flink镜像，确保版本与PyFlink一致
+    # image: apache/flink:1.17.2-scala_2.12 # 使用官方Flink镜像，确保版本与PyFlink一致
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: my-flink-custom:latest
     container_name: jobmanager
     ports:
       - "8081:8081" # Flink Web UI 端口映射到宿主机
       - "6123:6123" # Job Submission (RPC) Port - 这个是关键！
     volumes:
-      - ./flink_jobs/target:/opt/flink/usrlib
-      - ./flink_lib:/opt/flink/lib
+      - ./flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar:/opt/flink/usrlib/my-app.jar
     command: jobmanager # 启动JobManager
     environment:
-      FLINK_PROPERTIES_jobmanager.rpc.address: jobmanager # Flink内部RPC地址
+      JOB_MANAGER_RPC_ADDRESS: jobmanager
       # 配置Flink访问MinIO的凭据和端点
       # Flink容器内部通过服务名 'minio' 访问MinIO
       FLINK_PROPERTIES_s3.endpoint: http://minio:9000
-      FLINK_PROPERTIES_s3.access-key: minioadmin
-      FLINK_PROPERTIES_s3.secret-key: minioadmin
+      # FLINK_PROPERTIES_s3.access-key: minioadmin
+      # FLINK_PROPERTIES_s3.secret-key: minioadmin
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_KEY: minioadmin
       FLINK_PROPERTIES_s3.path.style.access: "true" # MinIO通常需要路径样式访问
     networks:
       - data-pipeline-net
 
   # Flink TaskManager 服务
   taskmanager:
-    image: apache/flink:1.17.2-scala_2.12 # 官方Flink镜像
+    # image: apache/flink:1.17.2-scala_2.12 # 官方Flink镜像
+    image: my-flink-custom:latest
     container_name: taskmanager
     depends_on:
       - jobmanager # 确保JobManager先启动
+    # 正確的掛載方式
     volumes:
-      - ./flink_jobs/target:/opt/flink/usrlib
-      - ./flink_lib:/opt/flink/lib
+      - ./flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar:/opt/flink/usrlib/my-app.jar
     command: taskmanager # 启动TaskManager
     environment:
-      FLINK_PROPERTIES_jobmanager.rpc.address: jobmanager # 连接JobManager
+      JOB_MANAGER_RPC_ADDRESS: jobmanager
       FLINK_PROPERTIES_taskmanager.numberOfTaskSlots: 2 # 每个TaskManager的Slot数量
       # MinIO 配置也需要传递给 TaskManager
       FLINK_PROPERTIES_s3.endpoint: http://minio:9000
-      FLINK_PROPERTIES_s3.access-key: minioadmin
-      FLINK_PROPERTIES_s3.secret-key: minioadmin
+      # FLINK_PROPERTIES_s3.access-key: minioadmin
+      # FLINK_PROPERTIES_s3.secret-key: minioadmin
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_KEY: minioadmin
       FLINK_PROPERTIES_s3.path.style.access: "true"
     networks:
       - data-pipeline-net

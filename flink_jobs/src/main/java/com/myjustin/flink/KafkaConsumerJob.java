@@ -10,9 +10,9 @@ public class KafkaConsumerJob {
     public static void main(String[] args) throws Exception {
         // 1. 创建流执行环境
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-//        StreamExecutionEnvironment env = StreamExecutionEnvironment.createRemoteEnvironment("localhost", 6123); // Flink JobManager RPC 端口
         env.setParallelism(1);
         env.enableCheckpointing(60000);
+        // 对于本地文件系统 Sink，推荐使用 file:// 协议头
         env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink/checkpoints");
         env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
 
@@ -20,10 +20,9 @@ public class KafkaConsumerJob {
         EnvironmentSettings settings = EnvironmentSettings.newInstance().inStreamingMode().build();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
 
-//        # 3. 定义 Kafka Source Table
-//        # 这里的Schema必须与user_actions_generator.py发送的JSON字典结构完全一致
-//        # 字段名、类型都必须匹配
-        TableResult kafka_source_result = tEnv.executeSql(
+        // 3. 定义 Kafka Source 表 (DDL)
+        // DDL 语句只是注册元数据，不会立即执行任务
+        tEnv.executeSql(
                 "CREATE TABLE KafkaSource (" +
                         "    `date` BIGINT," +
                         "    user_id INT," +
@@ -37,26 +36,21 @@ public class KafkaConsumerJob {
                         "    order_product_ids STRING," +
                         "    pay_category_ids STRING," +
                         "    pay_product_ids STRING," +
-                        "    city_id INT," +
-                        "    proc_time AS PROCTIME()" +
+                        "    city_id INT" +
                         ") WITH (" +
                         "    'connector' = 'kafka'," +
                         "    'topic' = 'user_behavior'," +
-//                        "    'properties.bootstrap.servers' = 'localhost:9092'," +
                         "    'properties.bootstrap.servers' = 'kafka:9093'," +
                         "    'properties.group.id' = 'flink_consumer_group'," +
                         "    'scan.startup.mode' = 'latest-offset'," +
                         "    'format' = 'json'" +
                         ")"
         );
-        System.out.println("Flink Job submitted. Job ID: " + kafka_source_result.getJobClient()); // 获取 Job ID
-        System.out.println("CREATE TABLE KafkaSource executed."); // 添加日志
+        System.out.println("CREATE TABLE KafkaSource executed.");
 
-//        # 4. 定义 MinIO (S3) Sink Table for Parquet with Time Partitioning
-//        # 最终数据会写入MinIO，以Parquet格式，并按日期和小时分区
-//        # 这里的Schema是你希望写入S3的最终结构
-        TableResult minio_result = tEnv.executeSql(
-                "CREATE TABLE MinIOSink (" +
+        // 4. 定义本地文件系统 Sink 表 (DDL)
+        tEnv.executeSql(
+                "CREATE TABLE LocalFileSink (" + // 为了清晰，改个名字
                         "    user_id INT," +
                         "    session_id STRING," +
                         "    page_id INT," +
@@ -74,22 +68,21 @@ public class KafkaConsumerJob {
                         ") PARTITIONED BY (dt, hr) " +
                         "WITH (" +
                         "    'connector' = 'filesystem'," +
-                        "    'path' = 's3://flink-bucket/user_action/'," +
                         "    'format' = 'parquet'," +
+//                        "    'path'='file:///tmp/output/user_action/'," +
+                        "    'path'='s3://flink-bucket/user_action/'," +
                         "    'sink.rolling-policy.file-size' = '100MB'," +
                         "    'sink.rolling-policy.rollover-interval' = '1 min'," +
                         "    'sink.partition-commit.policy.kind' = 'success-file'," +
                         "    'sink.partition-commit.trigger' = 'process-time'" +
                         ")"
         );
-        System.out.println("Flink Job submitted. Job minio ID: " + minio_result.getJobClient()); // 获取 Job ID
-        System.out.println("CREATE TABLE MinIOSink executed."); // 添加日志
+        System.out.println("CREATE TABLE LocalFileSink executed.");
 
-//        # 5. 核心 ETL 逻辑：从 KafkaSource 读取，富化，并插入到 MinIOSink
-//        # 这里我们将原始时间戳转换为日期和小时，用于分区。
-//        # 请注意字段名的对应关系，确保从KafkaSource中选择的字段与MinIOSink的Schema匹配
+        // 5. 定义核心 ETL 逻辑 (DML)
+        // 这一步定义了数据流图，但还未真正启动
         TableResult result = tEnv.executeSql(
-                "INSERT INTO MinIOSink " +
+                "INSERT INTO LocalFileSink " +
                         "SELECT " +
                         "    user_id, " +
                         "    session_id, " +
@@ -107,11 +100,16 @@ public class KafkaConsumerJob {
                         "    DATE_FORMAT(FROM_UNIXTIME(action_time / 1000), 'HH') AS hr " +
                         "FROM KafkaSource"
         );
-        System.out.println("INSERT INTO MinIOSink SELECT executed."); // 添加日志
-        System.out.println("Flink Job submitted. Job ID: " + result.getJobClient().get().getJobID()); // 获取 Job ID
+        System.out.println("INSERT INTO statement has been submitted to the job graph.");
 
-//        env.execute("KafkaConsumerJob");
+        // 🔥 6. 真正启动并执行 Flink 任务 🔥
+        // 这是最重要的、被您注释掉的一行。它会阻塞 main 线程，让 Flink 任务持续运行。
+        // 我们不再需要 env.execute()，因为 tEnv.executeSql("INSERT...") 已经提交了任务。
+        // 我们需要调用 result.await() 来等待任务完成（对于流处理，这意味着永远等待）。
+        System.out.println("Flink job graph defined. Now waiting for the job to run and finish...");
+        result.await();
 
-        System.out.printf("Pyflink job submitted！！！！！check it by kafka-ui:http://localhost:8080 and minio:http://localhost:9001/browser");
+        // 下面的代码将不会被执行，除非任务被取消或失败
+        System.out.println("This line will only be printed if the job is cancelled or fails.");
     }
 }

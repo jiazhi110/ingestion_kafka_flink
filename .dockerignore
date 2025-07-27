@@ -1,0 +1,20 @@
+# 忽略版本控制工具的目錄
+.git
+.gitignore
+
+# 忽略 IDE 和編輯器的設定檔
+.idea/
+.vscode/
+
+# 忽略 Maven 或 Gradle 的建置輸出目錄 (我们只复制最终的 jar)
+target/
+build/
+
+# 忽略 Java 專案的原始碼，因为我们只需要 target 里的 jar
+flink_jobs/src/
+
+# 其他專案相關的臨時檔或日誌檔
+*.log
+
+# 忽略本地的虛擬環境，永遠不要把它打包進 Docker 鏡像
+.venv/

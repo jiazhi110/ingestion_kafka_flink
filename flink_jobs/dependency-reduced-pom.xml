@@ -79,6 +79,12 @@
       <version>1.17.2</version>
       <scope>provided</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.flink</groupId>
+      <artifactId>flink-s3-fs-hadoop</artifactId>
+      <version>1.17.2</version>
+      <scope>provided</scope>
+    </dependency>
   </dependencies>
   <properties>
     <scala.binary.version>2.12</scala.binary.version>

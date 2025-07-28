@@ -75,6 +75,7 @@ services:
       - "6123:6123" # Job Submission (RPC) Port - 这个是关键！
     volumes:
       - ./flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar:/opt/flink/usrlib/my-app.jar
+      # - ./config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
     command: jobmanager # 启动JobManager
     environment:
       JOB_MANAGER_RPC_ADDRESS: jobmanager
@@ -86,6 +87,7 @@ services:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_KEY: minioadmin
       FLINK_PROPERTIES_s3.path.style.access: "true" # MinIO通常需要路径样式访问
+      # HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
     networks:
       - data-pipeline-net
 
@@ -99,6 +101,7 @@ services:
     # 正確的掛載方式
     volumes:
       - ./flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar:/opt/flink/usrlib/my-app.jar
+      # - ./config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
     command: taskmanager # 启动TaskManager
     environment:
       JOB_MANAGER_RPC_ADDRESS: jobmanager
@@ -110,6 +113,7 @@ services:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_KEY: minioadmin
       FLINK_PROPERTIES_s3.path.style.access: "true"
+      # HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
     networks:
       - data-pipeline-net
 

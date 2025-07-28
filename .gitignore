@@ -12,3 +12,6 @@ venv-ingestion/
 
 #editor
 .idea/
+
+#monio
+minio_data/

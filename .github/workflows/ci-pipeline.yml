@@ -1,0 +1,52 @@
+name: Flink Job CI Pipeline
+
+# 觸發條件：當有程式碼推送到 main 或 develop 分支時，啟動此流程
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-push-image:
+    # 運行此任務的伺服器環境：最新的 Ubuntu 系統
+    runs-on: ubuntu-latest
+
+    steps:
+      # 第 1 步：簽出程式碼
+      # 把您倉庫中的程式碼下載到 CI 伺服器上
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 第 2 步：設定 Java 環境
+      # 安裝我們需要的 Java 11
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+
+      # 第 3 步：打包 Flink 應用程式
+      # 執行 mvn clean package 來產生我們的 Fat Jar
+      - name: Build Flink Job with Maven
+        working-directory: ./flink_jobs
+        run: mvn clean package
+
+      # 第 4 步：登入 Docker Hub
+      # 使用我們之前設定的秘密通行證，安全地登入
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 第 5 步：建置並推送 Docker 鏡像
+      # 執行 docker build，並將建置好的鏡像推送到您的 Docker Hub 倉庫
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          # 鏡像的標籤：您的Docker Hub用戶名/專案名:分支名-提交哈希
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ingestion-kafka-flink:${{ github.ref_name }}-${{ github.sha }}

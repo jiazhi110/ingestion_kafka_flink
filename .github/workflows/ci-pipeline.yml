@@ -56,7 +56,7 @@ jobs:
           # 您在 ECR 中建立的倉庫名稱，儲存在 GitHub Secrets 中
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
           # 鏡像的標籤，我們使用分支名 + 提交哈希的前7位，非常專業
-          IMAGE_TAG: ${{ github.ref_name }}-${{ GITHUB.SHA_SHORT }}
+          IMAGE_TAG: ${{ github.ref_name }}-${{ slice(github.sha, 0, 7) }}
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG

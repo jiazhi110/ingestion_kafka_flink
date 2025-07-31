@@ -55,10 +55,10 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           # 您在 ECR 中建立的倉庫名稱，儲存在 GitHub Secrets 中
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
-          # 鏡像的標籤，我們使用分支名 + 提交哈希的前7位，非常專業
-          IMAGE_TAG: ${{ github.ref_name }}-${{ slice(github.sha, 0, 7) }}
         run: |
+          # 🔥🔥🔥 最终的修正：使用 shell 指令来可靠地截取前 7 位提交 ID 🔥🔥🔥
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE_TAG="${{ github.ref_name }}-${SHORT_SHA}"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          # 輸出完整的鏡像 URI，供後續的 CD 步驟使用
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT

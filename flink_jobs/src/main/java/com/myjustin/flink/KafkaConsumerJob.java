@@ -70,8 +70,8 @@ public class KafkaConsumerJob {
                         "    'connector' = 'filesystem'," +
                         "    'format' = 'parquet'," +
 //                        "    'path'='file:///tmp/output/user_action/'," +
-                        "    'path'='s3://flink-bucket/user_action/'," +
-                        // "    s3://jiazhi110-flink-staging-bucket/user_action/" +
+                        // "    'path'='s3://flink-bucket/user_action/'," +
+                        "    'path'='s3://jiazhi110-flink-staging-bucket/user_action/'," +
                         "    'sink.rolling-policy.file-size' = '100MB'," +
                         "    'sink.rolling-policy.rollover-interval' = '1 min'," +
                         "    'sink.partition-commit.policy.kind' = 'success-file'," +

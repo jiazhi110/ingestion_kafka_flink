@@ -1,5 +1,6 @@
 package com.myjustin.flink;
 
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
@@ -13,12 +14,37 @@ public class KafkaConsumerJob {
         env.setParallelism(1);
         env.enableCheckpointing(60000);
         // 对于本地文件系统 Sink，推荐使用 file:// 协议头
-        env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink/checkpoints");
+//        env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink/checkpoints");
+        // produce set
+        env.getCheckpointConfig().setCheckpointStorage("s3://jiazhi110-flink-staging-bucket/checkpoints/");
         env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
 
         // 2. 创建表环境
         EnvironmentSettings settings = EnvironmentSettings.newInstance().inStreamingMode().build();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
+
+        // ECS 会将我们设置的 Secrets 注入为环境变量
+        String mskUsername = System.getenv("msk-username");
+        String mskPassword = System.getenv("msk-password");
+
+        // produce set
+        // 1：必须提供 MSK 提供的所有 Bootstrap Servers 地址，以实现高可用 🔥
+        String bootstrapServers = "b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9196,b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9196";
+
+        // 构建 JAAS 配置字符串
+        String jaasConfig = String.format(
+                "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
+                mskUsername,
+                mskPassword
+        );
+
+        // 获取 Flink 的底层配置对象
+        Configuration configuration = tEnv.getConfig().getConfiguration();
+
+        // 将 Kafka 的安全认证配置，以编程方式设置进去
+        configuration.setString("properties.security.protocol", "SASL_SSL");
+        configuration.setString("properties.sasl.mechanism", "SCRAM-SHA-512");
+        configuration.setString("properties.sasl.jaas.config", jaasConfig);
 
         // 3. 定义 Kafka Source 表 (DDL)
         // DDL 语句只是注册元数据，不会立即执行任务
@@ -40,17 +66,19 @@ public class KafkaConsumerJob {
                         ") WITH (" +
                         "    'connector' = 'kafka'," +
                         "    'topic' = 'user_behavior'," +
-                        "    'properties.bootstrap.servers' = 'kafka:9093'," +
+                        // "    'properties.bootstrap.servers' = 'kafka:9093'," +
                         "    'properties.group.id' = 'flink_consumer_group'," +
                         "    'scan.startup.mode' = 'latest-offset'," +
                         "    'format' = 'json'" +
+                        // produce set
+                        "    'properties.bootstrap.servers' = '" + bootstrapServers + "'," + // 直接将地址写入
                         ")"
         );
         System.out.println("CREATE TABLE KafkaSource executed.");
 
         // 4. 定义本地文件系统 Sink 表 (DDL)
         tEnv.executeSql(
-                "CREATE TABLE LocalFileSink (" + // 为了清晰，改个名字
+                "CREATE TABLE S3Sink (" + // 为了清晰，改个名字
                         "    user_id INT," +
                         "    session_id STRING," +
                         "    page_id INT," +

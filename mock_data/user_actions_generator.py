@@ -1,4 +1,3 @@
-# ingestion_kafka_flink/mock_data/user_actions_generator.py
 import json, time, random
 import yaml
 import os
@@ -19,8 +18,11 @@ kafka_config = config['kafka']
 bootstrap_servers = kafka_config['bootstrap_servers']
 topic = kafka_config['topic']
 
+# 🔥 关键修改：获取安全配置
+security_config = kafka_config.get('security')
+
 # 创建Kafka生产者
-producer = get_producer(bootstrap_servers)
+producer = get_producer(bootstrap_servers, security_config)
 
 column_names = [
     'date',

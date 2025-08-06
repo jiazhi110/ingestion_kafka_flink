@@ -23,28 +23,46 @@ public class KafkaConsumerJob {
         EnvironmentSettings settings = EnvironmentSettings.newInstance().inStreamingMode().build();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
 
-        // ECS 会将我们设置的 Secrets 注入为环境变量
-        String mskUsername = System.getenv("msk-username");
-        String mskPassword = System.getenv("msk-password");
+//        // ECS 会将我们设置的 Secrets 注入为环境变量
+//        String mskUsername = System.getenv("msk-username");
+//        String mskPassword = System.getenv("msk-password");
+//
+//        // produce set
+//        // 1：必须提供 MSK 提供的所有 Bootstrap Servers 地址，以实现高可用 🔥
+//        String bootstrapServers = "b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9196,b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9196";
+//
+//        // 构建 JAAS 配置字符串
+//        String jaasConfig = String.format(
+//                "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
+//                mskUsername,
+//                mskPassword
+//        );
 
-        // produce set
-        // 1：必须提供 MSK 提供的所有 Bootstrap Servers 地址，以实现高可用 🔥
-        String bootstrapServers = "b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9196,b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9196";
+//        // 获取 Flink 的底层配置对象
+//        Configuration configuration = tEnv.getConfig().getConfiguration();
+//
+//        // 将 Kafka 的安全认证配置，以编程方式设置进去
+//        configuration.setString("properties.security.protocol", "SASL_SSL");
+//        configuration.setString("properties.sasl.mechanism", "SCRAM-SHA-512");
+//        configuration.setString("properties.sasl.jaas.config", jaasConfig);
 
-        // 构建 JAAS 配置字符串
-        String jaasConfig = String.format(
-                "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
-                mskUsername,
-                mskPassword
-        );
+        // 🔥 关键修改：不再需要从 Secrets Manager 读取用户名和密码
+
+        // MSK 的 Bootstrap Servers 地址 (这次是 IAM 端口 9098)
+        String bootstrapServers = "b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198,b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198";
+
+        // 构建 JAAS 配置字符串，使用 IAMLoginModule
+        String jaasConfig = "software.amazon.msk.auth.iam.IAMLoginModule required;";
 
         // 获取 Flink 的底层配置对象
         Configuration configuration = tEnv.getConfig().getConfiguration();
 
-        // 将 Kafka 的安全认证配置，以编程方式设置进去
+        // 设置 Kafka 的安全认证配置
         configuration.setString("properties.security.protocol", "SASL_SSL");
-        configuration.setString("properties.sasl.mechanism", "SCRAM-SHA-512");
+        configuration.setString("properties.sasl.mechanism", "AWS_MSK_IAM");
         configuration.setString("properties.sasl.jaas.config", jaasConfig);
+        configuration.setString("properties.sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
+
 
         // 3. 定义 Kafka Source 表 (DDL)
         // DDL 语句只是注册元数据，不会立即执行任务
@@ -106,12 +124,12 @@ public class KafkaConsumerJob {
                         "    'sink.partition-commit.trigger' = 'process-time'" +
                         ")"
         );
-        System.out.println("CREATE TABLE LocalFileSink executed.");
+        System.out.println("CREATE TABLE S3Sink executed.");
 
         // 5. 定义核心 ETL 逻辑 (DML)
         // 这一步定义了数据流图，但还未真正启动
         TableResult result = tEnv.executeSql(
-                "INSERT INTO LocalFileSink " +
+                "INSERT INTO S3Sink " +
                         "SELECT " +
                         "    user_id, " +
                         "    session_id, " +

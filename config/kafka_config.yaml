@@ -1,10 +1,30 @@
-# ingestion_kafka_flink/config/kafka_config.yaml
+# dev set
+# kafka:
+#   bootstrap_servers: localhost:9092 # 宿主机访问Kafka
+#   topic: user_behavior
+# minio:
+#   endpoint: http://localhost:9000 # 宿主机访问MinIO Web UI
+#   access_key: minioadmin
+#   secret_key: minioadmin
+#   bucket: flink-bucket
+#   output_prefix: user_action/
+
+# prod set
+
 kafka:
-  bootstrap_servers: localhost:9092 # 宿主机访问Kafka
-  topic: user_behavior
-minio:
-  endpoint: http://localhost:9000 # 宿主机访问MinIO Web UI
-  access_key: minioadmin
-  secret_key: minioadmin
-  bucket: flink-bucket
-  output_prefix: user_action/
+  # 🔥 关键修改：换成您 MSK 的 SASL/SCRAM Bootstrap Servers 地址
+  bootstrap_servers: 'b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198,b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198'
+  topic: 'user_behavior'
+
+  # 🔥 关键修改：新增安全认证配置
+  # security:
+  #   protocol: 'SASL_SSL'
+  #   mechanism: 'SCRAM-SHA-512'
+  #   # 这两个值对应您在 Secrets Manager 中创建的用户名和密码
+  #   username: 'flink-user' 
+  #   password: 'jiazhi' 
+  #   cafile: 'AmazonRootCA1.pem'
+
+  # 改成 IAM模式
+  security:
+    mechanism: 'AWS_MSK_IAM'

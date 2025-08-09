@@ -1,31 +1,61 @@
-from kafka import KafkaProducer
 import json
+import socket
+from confluent_kafka import Producer
 from aws_msk_iam_sasl_signer import MSKAuthTokenProvider
 
-class MSKTokenProvider(MSKAuthTokenProvider):
+import json
+import socket
+import time
+from confluent_kafka import Producer
+from aws_msk_iam_sasl_signer.MSKAuthTokenProvider import generate_auth_token
+
+class MSKTokenProvider:
+    def __init__(self, region):
+        self.region = region
+
     def token(self):
-        token, _ = self.generate_auth_token('us-east-1') # <-- 替换成您的 AWS 区域
+        token, _ = generate_auth_token(self.region)
         return token
 
 def get_producer(bootstrap_servers, security_config=None):
-#     """
-#     创建一个 Kafka 生产者，支持 IAM 认证。
-#     """
+    conf = {
+        'bootstrap.servers': bootstrap_servers,
+        'client.id': f'msk-iam-producer-{socket.gethostname()}',
+        'socket.timeout.ms': 30000,
+        'api.version.request.timeout.ms': 30000
+    }
+
     if security_config and security_config.get('mechanism') == 'AWS_MSK_IAM':
-        producer = KafkaProducer(
-            bootstrap_servers=bootstrap_servers.split(','),
-            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-            security_protocol='SASL_SSL',
-            sasl_mechanism='OAUTHBEARER', # IAM 使用 OAUTHBEARER 机制
-            sasl_oauth_token_provider=MSKTokenProvider()
-        )
-    else:
-        # 否则，使用普通的 plaintext 连接
-        producer = KafkaProducer(
-            bootstrap_servers=bootstrap_servers.split(','),
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
-    return producer
+        token_provider = MSKTokenProvider(security_config['region'])
+
+        print(f"token_provider is {token_provider}")
+
+        def oauth_cb(oauth_config):
+            token = token_provider.token()
+            return token, int(time.time() * 1000)
+
+# AWS_MSK_IAM 是你在代码或者配置里用来标识“用 IAM 认证”的一个标识符，属于逻辑层的约定。
+# OAUTHBEARER 是 Kafka SASL 协议里规定的机制名，是 Kafka 客户端实际使用的认证协议名称。
+# AWS MSK 的 IAM 认证方案，是用 OAuth 2.0 Bearer Token 的方式实现的。
+# 所以 Kafka 客户端需要告诉 Kafka Broker：我用的是 OAUTHBEARER 机制。
+# 这就是为什么生产者配置 sasl.mechanisms 赋值为 "OAUTHBEARER"。
+# 本地的 Kafka（或者你本地用的 MSK 客户端配置文件里）写的是 AWS_MSK_IAM，那应该是你配置文件里用来触发 IAM 认证模块加载的“伪机制名”，但 Kafka Broker 只识别标准 SASL 机制名。
+# 实际 Kafka Broker 只识别标准机制：PLAIN, SCRAM-SHA-512, OAUTHBEARER 等。
+# AWS MSK IAM 认证是基于 OAUTHBEARER 的扩展，所以你客户端要用标准名 "OAUTHBEARER"。
+# 你本地配置用 AWS_MSK_IAM 其实是启动相关回调处理的标志，不是 Kafka 机制本身。
+
+        conf.update({
+            'security.protocol': 'SASL_SSL',
+            'sasl.mechanisms': 'OAUTHBEARER',
+            'oauth_cb': oauth_cb,
+            'ssl.ca.location': security_config.get('ssl_cafile')
+        })
+
+    print("--- Creating Kafka Producer with the following configuration: ---")
+    print(json.dumps({k: v for k, v in conf.items() if k != 'oauth_cb'}, indent=2))
+    print("-------------------------------------------------------------")
+
+    return Producer(conf)
 
 # def get_producer(bootstrap_servers, security_config=None):
 #     """
@@ -51,8 +81,34 @@ def get_producer(bootstrap_servers, security_config=None):
 #     return producer
 
 def send_event(producer, topic, event):
-    # 发送事件到Kafka，确保发送成功
-    producer.send(topic, event).add_callback(lambda _: print(f"Sent: {event}")) \
-                               .add_errback(lambda ex: print(f"Failed to send: {event} with error: {ex}"))
-    producer.flush() # 立即发送所有挂起的消息
-    print(f"Successfully sent event for user_id: {event.get('user_id')}")
+    """
+    使用 confluent-kafka 生产者发送单个事件。
+    这个函数现在是异步的，但我们用 poll(0) 来触发回调。
+    """
+    
+    # 投递报告回调函数
+    def delivery_report(err, msg):
+        """ 消息发送后被调用。 """
+        if err is not None:
+            print(f"Failed to deliver message: {err}")
+        else:
+            print(f"Message delivered to topic '{msg.topic()}' in partition [{msg.partition()}]")
+
+    try:
+        # 打印要发送的内容
+        print("📤 Sending event:")
+        print(json.dumps(event, indent=2))  # 打印更清晰
+        
+        # 将事件序列化为 JSON 字符串
+        value = json.dumps(event).encode('utf-8')
+        
+        # 生产消息，这是一个非阻塞的操作
+        producer.produce(topic, value=value, callback=delivery_report)
+        
+        # poll(0) 会触发所有等待的回调函数（比如我们的 delivery_report），
+        # 但不会阻塞。这对于循环发送非常高效。
+        producer.poll(0)
+        
+    except Exception as e:
+        print(f"Error producing message: {e}")
+

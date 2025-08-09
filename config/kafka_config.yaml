@@ -14,6 +14,7 @@
 kafka:
   # 🔥 关键修改：换成您 MSK 的 SASL/SCRAM Bootstrap Servers 地址
   bootstrap_servers: 'b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198,b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198'
+  # bootstrap_servers: 'b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098'
   topic: 'user_behavior'
 
   # 🔥 关键修改：新增安全认证配置
@@ -28,3 +29,5 @@ kafka:
   # 改成 IAM模式
   security:
     mechanism: 'AWS_MSK_IAM'
+    ssl_cafile: 'AmazonRootCA1.pem'
+    region: 'us-east-1'

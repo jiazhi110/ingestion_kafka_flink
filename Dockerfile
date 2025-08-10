@@ -7,6 +7,10 @@ FROM apache/flink:1.17.2-scala_2.12
 # 复制你的 flink_lib 到 /opt/flink/lib
 COPY flink_lib/ /opt/flink/plugins
 
+#为了ci-pipeline，因为本地用的是volume mount。
+COPY flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar /opt/flink/usrlib/my-app.jar
+
+
 # 3. 🔥🔥🔥 最終的、最權威的修正：直接將 S3 設定寫入 Flink 的核心設定檔 🔥🔥🔥   本地打开它，因为会需要它执行的参数，用参数连接到minio，其他方式不行。
 #    這會強制 Flink 和它所有的元件都使用這些設定
 # RUN echo "" >> /opt/flink/conf/flink-conf.yaml && \

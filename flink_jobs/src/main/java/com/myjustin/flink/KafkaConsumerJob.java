@@ -49,7 +49,8 @@ public class KafkaConsumerJob {
         // 🔥 关键修改：不再需要从 Secrets Manager 读取用户名和密码
 
         // MSK 的 Bootstrap Servers 地址 (这次是 IAM 端口 9098)
-        String bootstrapServers = "b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198,b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198";
+//        String bootstrapServers = "b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198,b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198";
+        String bootstrapServers = "b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098";
 
         // 构建 JAAS 配置字符串，使用 IAMLoginModule
         String jaasConfig = "software.amazon.msk.auth.iam.IAMLoginModule required;";

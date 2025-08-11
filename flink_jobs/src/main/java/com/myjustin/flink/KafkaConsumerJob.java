@@ -87,9 +87,9 @@ public class KafkaConsumerJob {
                         // "    'properties.bootstrap.servers' = 'kafka:9093'," +
                         "    'properties.group.id' = 'flink_consumer_group'," +
                         "    'scan.startup.mode' = 'latest-offset'," +
-                        "    'format' = 'json'" +
+                        "    'format' = 'json'," +
                         // produce set
-                        "    'properties.bootstrap.servers' = '" + bootstrapServers + "'," + // 直接将地址写入
+                        "    'properties.bootstrap.servers' = '" + bootstrapServers + "'" + // 直接将地址写入
                         ")"
         );
         System.out.println("CREATE TABLE KafkaSource executed.");

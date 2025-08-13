@@ -9,18 +9,34 @@ on:
 jobs:
   sync-to-ec2:
     runs-on: ubuntu-latest
+    
     steps:
-      # 1️⃣ checkout 代码
+      # 1️⃣ 簽出程式碼
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ 配置 SSH key，用于连接 EC2
+      # 2️⃣ 🔥 關鍵修正 1：新增主機金鑰驗證 🔥
+      #    在連接之前，先將 EC2 的主機公鑰加入到 known_hosts 檔案中
+      #    這可以避免 SSH 的互動式確認提示，確保自動化流程順暢
+      - name: Add EC2 host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      # 3️⃣ 配置 SSH 私鑰，用於登入 EC2
       - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.8.1
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-      # 3️⃣ 同步代码到 EC2
+      # 4️⃣ 🔥 關鍵修正 2：使用 rsync 同步程式碼，並排除不必要的檔案 🔥
       - name: Sync code to EC2
         run: |
-          rsync -avz --delete ./ ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/projects/
+          rsync -avz --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.venv/' \
+            --exclude 'venv/' \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            ./ ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/projects/ingestion_kafka_flink/

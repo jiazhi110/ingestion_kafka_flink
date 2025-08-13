@@ -50,19 +50,19 @@ public class KafkaConsumerJob {
 
         // MSK 的 Bootstrap Servers 地址 (这次是 IAM 端口 9098)
 //        String bootstrapServers = "b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198,b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198";
-        String bootstrapServers = "b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098";
+        // String bootstrapServers = "b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098";
 
-        // 构建 JAAS 配置字符串，使用 IAMLoginModule
-        String jaasConfig = "software.amazon.msk.auth.iam.IAMLoginModule required;";
+        // // 构建 JAAS 配置字符串，使用 IAMLoginModule
+        // String jaasConfig = "software.amazon.msk.auth.iam.IAMLoginModule required;";
 
-        // 获取 Flink 的底层配置对象
-        Configuration configuration = tEnv.getConfig().getConfiguration();
+        // // 获取 Flink 的底层配置对象
+        // Configuration configuration = tEnv.getConfig().getConfiguration();
 
-        // 设置 Kafka 的安全认证配置
-        configuration.setString("properties.security.protocol", "SASL_SSL");
-        configuration.setString("properties.sasl.mechanism", "AWS_MSK_IAM");
-        configuration.setString("properties.sasl.jaas.config", jaasConfig);
-        configuration.setString("properties.sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
+        // // 设置 Kafka 的安全认证配置
+        // configuration.setString("properties.security.protocol", "SASL_SSL");
+        // configuration.setString("properties.sasl.mechanism", "AWS_MSK_IAM");
+        // configuration.setString("properties.sasl.jaas.config", jaasConfig);
+        // configuration.setString("properties.sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
 
 
         // 3. 定义 Kafka Source 表 (DDL)
@@ -83,14 +83,24 @@ public class KafkaConsumerJob {
                         "    pay_product_ids STRING," +
                         "    city_id INT" +
                         ") WITH (" +
-                        "    'connector' = 'kafka'," +
-                        "    'topic' = 'user_behavior'," +
-                        // "    'properties.bootstrap.servers' = 'kafka:9093'," +
-                        "    'properties.group.id' = 'flink_consumer_group'," +
-                        "    'scan.startup.mode' = 'latest-offset'," +
-                        "    'format' = 'json'," +
-                        // produce set
-                        "    'properties.bootstrap.servers' = '" + bootstrapServers + "'" + // 直接将地址写入
+                        // "    'connector' = 'kafka'," +
+                        // "    'topic' = 'user_behavior'," +
+                        // // "    'properties.bootstrap.servers' = 'kafka:9093'," +
+                        // "    'properties.group.id' = 'flink_consumer_group'," +
+                        // "    'scan.startup.mode' = 'latest-offset'," +
+                        // "    'format' = 'json'," +
+                        // // produce set
+                        // "    'properties.bootstrap.servers' = '" + bootstrapServers + "'" + // 直接将地址写入
+                                "'connector' = 'kafka'," +
+                                "'topic' = 'user_behavior'," +
+                                "'properties.bootstrap.servers' = 'b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098'," +
+                                "'properties.security.protocol' = 'SASL_SSL'," +
+                                "'properties.sasl.mechanism' = 'AWS_MSK_IAM'," +
+                                "'properties.sasl.jaas.config' = 'software.amazon.msk.auth.iam.IAMLoginModule required;'," +
+                                "'properties.sasl.client.callback.handler.class' = 'software.amazon.msk.auth.iam.IAMClientCallbackHandler'," +
+                                "'properties.group.id' = 'flink_consumer_group'," +
+                                "'scan.startup.mode' = 'latest-offset'," +
+                                "'format' = 'json'" +
                         ")"
         );
         System.out.println("CREATE TABLE KafkaSource executed.");

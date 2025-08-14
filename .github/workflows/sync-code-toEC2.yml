@@ -21,7 +21,17 @@ jobs:
       - name: Add EC2 host to known_hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          # 检查 EC2_HOST 是否设置
+          if [ -z "${{ secrets.EC2_HOST }}" ]; then
+            echo "Error: EC2_HOST secret is not set"
+            exit 1
+          fi
+          # 移除可能的协议前缀并提取主机名
+          EC2_HOSTNAME=$(echo "${{ secrets.EC2_HOST }}" | sed -e 's|^https\?://||' -e 's|/.*$||' -e 's|:.*$||')
+          ssh-keyscan -H "$EC2_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null || {
+            echo "Warning: Failed to add host key for $EC2_HOSTNAME"
+            echo "This might be OK if the host is already known"
+          }
 
       # 3️⃣ 配置 SSH 私鑰，用於登入 EC2
       - name: Setup SSH
@@ -32,6 +42,8 @@ jobs:
       # 4️⃣ 🔥 關鍵修正 2：使用 rsync 同步程式碼，並排除不必要的檔案 🔥
       - name: Sync code to EC2
         run: |
+          # 提取主机名用于 rsync
+          EC2_HOSTNAME=$(echo "${{ secrets.EC2_HOST }}" | sed -e 's|^https\?://||' -e 's|/.*$||' -e 's|:.*$||')
           rsync -avz --delete \
             --exclude '.git/' \
             --exclude '.github/' \
@@ -39,4 +51,4 @@ jobs:
             --exclude 'venv/' \
             --exclude '__pycache__/' \
             --exclude '*.pyc' \
-            ./ ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/projects/ingestion_kafka_flink/
+            ./ ec2-user@"$EC2_HOSTNAME":/home/ec2-user/projects/ingestion_kafka_flink/

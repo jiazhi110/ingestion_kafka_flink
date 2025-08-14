@@ -32,13 +32,18 @@ jobs:
             echo "Warning: Failed to add host key for $EC2_HOST"
           }
           
+          # 测试 SSH 连接
           ssh -o StrictHostKeyChecking=no ec2-user@"$EC2_HOST" "echo SSH connection OK"
 
-      # 3️⃣ 使用 rsync 同步代码
+      # 3️⃣ 同步代码 (已修改)
       - name: Sync code to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
+          # 新增: 在同步前，先确保远程服务器上的目标目录存在
+          ssh -o StrictHostKeyChecking=no ec2-user@"$EC2_HOST" "mkdir -p /home/ec2-user/projects/ingestion_kafka_flink"
+          
+          # 原有的 rsync 命令保持不变
           rsync -avz --delete \
             --exclude '.git/' \
             --exclude '.github/' \

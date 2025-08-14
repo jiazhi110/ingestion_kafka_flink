@@ -9,43 +9,35 @@ on:
 jobs:
   sync-to-ec2:
     runs-on: ubuntu-latest
-    
+
     steps:
-      # 1️⃣ 簽出程式碼
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ 🔥 關鍵修正 1：新增主機金鑰驗證 🔥
-      #    在連接之前，先將 EC2 的主機公鑰加入到 known_hosts 檔案中
-      #    這可以避免 SSH 的互動式確認提示，確保自動化流程順暢
-      - name: Add EC2 host to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          # 检查 EC2_HOST 是否设置
-          if [ -z "${EC2_HOST}" ]; then
-            echo "Error: EC2_HOST secret is not set"
-            exit 1
-          fi
-          # 移除可能的协议前缀并提取主机名
-          EC2_HOSTNAME=$(echo "${EC2_HOST}" | sed -e 's|^https\?://||' -e 's|/.*$||' -e 's|:.*$||')
-          ssh-keyscan -H "$EC2_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null || {
-            echo "Warning: Failed to add host key for $EC2_HOSTNAME"
-            echo "This might be OK if the host is already known"
-          }
+      # 2️⃣ 配置 SSH secrets
+      - name: Setup SSH environment
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
-
-      # 3️⃣ 配置 SSH 私鑰，用於登入 EC2
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
-
-      # 4️⃣ 🔥 關鍵修正 2：使用 rsync 同步程式碼，並排除不必要的檔案 🔥
-      - name: Sync code to EC2
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
-          # 提取主机名用于 rsync
-          EC2_HOSTNAME=$(echo "${EC2_HOST}" | sed -e 's|^https\?://||' -e 's|/.*$||' -e 's|:.*$||')
+          mkdir -p ~/.ssh
+          echo "$EC2_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # 将 EC2 主机加入 known_hosts
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || {
+            echo "Warning: Failed to add host key for $EC2_HOST"
+          }
+
+          # 测试 SSH 连接
+          ssh -o StrictHostKeyChecking=no ec2-user@"$EC2_HOST" "echo SSH connection OK"
+
+      # 3️⃣ 使用 rsync 同步代码
+      - name: Sync code to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
           rsync -avz --delete \
             --exclude '.git/' \
             --exclude '.github/' \
@@ -53,6 +45,4 @@ jobs:
             --exclude 'venv/' \
             --exclude '__pycache__/' \
             --exclude '*.pyc' \
-            ./ ec2-user@"$EC2_HOSTNAME":/home/ec2-user/projects/ingestion_kafka_flink/
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
+            ./ ec2-user@"$EC2_HOST":/home/ec2-user/projects/ingestion_kafka_flink/

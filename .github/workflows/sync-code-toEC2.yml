@@ -9,7 +9,7 @@ on:
 jobs:
   sync-to-ec2:
     runs-on: ubuntu-latest
-
+    
     steps:
       # 1️⃣ Checkout repository
       - name: Checkout repository
@@ -22,18 +22,18 @@ jobs:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-
+          
           # 写入私钥并设置权限
           echo "$EC2_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-
+          
           # 将 EC2 主机加入 known_hosts
-          ssh-keyscan -H "${EC2_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || {
-            echo "Warning: Failed to add host key for ${EC2_HOST}"
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || {
+            echo "Warning: Failed to add host key for $EC2_HOST"
           }
-
+          
           # 测试 SSH 连接
-          ssh -o StrictHostKeyChecking=no ec2-user@"${EC2_HOST}" "echo SSH connection OK"
+          ssh -o StrictHostKeyChecking=no ec2-user@"$EC2_HOST" "echo SSH connection OK"
 
       # 3️⃣ 使用 rsync 同步代码
       - name: Sync code to EC2
@@ -47,4 +47,4 @@ jobs:
             --exclude 'venv/' \
             --exclude '__pycache__/' \
             --exclude '*.pyc' \
-            ./ ec2-user@"${EC2_HOST}":/home/ec2-user/projects/ingestion_kafka_flink/
+            ./ ec2-user@"$EC2_HOST":/home/ec2-user/projects/ingestion_kafka_flink/

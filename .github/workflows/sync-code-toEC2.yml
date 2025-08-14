@@ -32,7 +32,6 @@ jobs:
             echo "Warning: Failed to add host key for $EC2_HOST"
           }
           
-          # 测试 SSH 连接
           ssh -o StrictHostKeyChecking=no ec2-user@"$EC2_HOST" "echo SSH connection OK"
 
       # 3️⃣ 使用 rsync 同步代码

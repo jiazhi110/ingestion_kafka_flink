@@ -82,5 +82,5 @@ try:
 except KeyboardInterrupt:
     print("\nStopping producer...")
 finally:
-    producer.close() # 关闭生产者连接
-    print("Producer closed.")
+    producer.flush() # 关闭生产者连接
+    print("Producer flush.")

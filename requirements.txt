@@ -12,3 +12,5 @@ kafka-python==2.0.2
 
 #移除 sasl，换成 AWS 官方的 IAM 签名
 aws-msk-iam-sasl-signer-python==1.0.1
+
+confluent-kafka==2.11.0

@@ -7,47 +7,17 @@ import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Properties;
-
 public class KafkaConsumerJob {
     public static void main(String[] args) throws Exception {
-        // Load configuration from properties file
-        Properties props = new Properties();
-        try (InputStream input = KafkaConsumerJob.class.getClassLoader().getResourceAsStream("application.properties")) {
-            if (input == null) {
-                throw new IOException("Unable to find application.properties");
-            }
-            props.load(input);
-        } catch (IOException e) {
-            System.err.println("Failed to load application.properties: " + e.getMessage());
-            throw e;
-        }
-        
-        // Validate required properties
-        String[] requiredProps = {
-            "kafka.bootstrap.servers", "kafka.topic", "kafka.group.id",
-            "kafka.security.protocol", "kafka.sasl.mechanism",
-            "kafka.sasl.jaas.config", "kafka.sasl.client.callback.handler.class",
-            "s3.output.path", "s3.checkpoint.path"
-        };
-        
-        for (String prop : requiredProps) {
-            if (props.getProperty(prop) == null) {
-                throw new IllegalArgumentException("Missing required property: " + prop);
-            }
-        }
-
         // 1. 创建流执行环境
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(Integer.parseInt(props.getProperty("flink.parallelism", "1")));
-        env.enableCheckpointing(Long.parseLong(props.getProperty("flink.checkpoint.interval", "60000")));
+        env.setParallelism(1);
+        env.enableCheckpointing(60000);
         // 对于本地文件系统 Sink，推荐使用 file:// 协议头
 //        env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink/checkpoints");
         // produce set
-        env.getCheckpointConfig().setCheckpointStorage(props.getProperty("s3.checkpoint.path"));
-        env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.valueOf(props.getProperty("flink.checkpoint.mode", "EXACTLY_ONCE")));
+        env.getCheckpointConfig().setCheckpointStorage("s3://jiazhi110-flink-staging-bucket/checkpoints/");
+        env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
 
         // 2. 创建表环境
         EnvironmentSettings settings = EnvironmentSettings.newInstance().inStreamingMode().build();
@@ -113,14 +83,22 @@ public class KafkaConsumerJob {
                         "    pay_product_ids STRING," +
                         "    city_id INT" +
                         ") WITH (" +
+                        // "    'connector' = 'kafka'," +
+                        // "    'topic' = 'user_behavior'," +
+                        // // "    'properties.bootstrap.servers' = 'kafka:9093'," +
+                        // "    'properties.group.id' = 'flink_consumer_group'," +
+                        // "    'scan.startup.mode' = 'latest-offset'," +
+                        // "    'format' = 'json'," +
+                        // // produce set
+                        // "    'properties.bootstrap.servers' = '" + bootstrapServers + "'" + // 直接将地址写入
                                 "'connector' = 'kafka'," +
-                                "'topic' = '" + props.getProperty("kafka.topic") + "'," +
-                                "'properties.bootstrap.servers' = '" + props.getProperty("kafka.bootstrap.servers") + "'," +
-                                "'properties.security.protocol' = '" + props.getProperty("kafka.security.protocol") + "'," +
-                                "'properties.sasl.mechanism' = '" + props.getProperty("kafka.sasl.mechanism") + "'," +
-                                "'properties.sasl.jaas.config' = '" + props.getProperty("kafka.sasl.jaas.config") + "'," +
-                                "'properties.sasl.client.callback.handler.class' = '" + props.getProperty("kafka.sasl.client.callback.handler.class") + "'," +
-                                "'properties.group.id' = '" + props.getProperty("kafka.group.id") + "'," +
+                                "'topic' = 'user_behavior_01'," +
+                                "'properties.bootstrap.servers' = 'b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098'," +
+                                "'properties.security.protocol' = 'SASL_SSL'," +
+                                "'properties.sasl.mechanism' = 'AWS_MSK_IAM'," +
+                                "'properties.sasl.jaas.config' = 'software.amazon.msk.auth.iam.IAMLoginModule required;'," +
+                                "'properties.sasl.client.callback.handler.class' = 'software.amazon.msk.auth.iam.IAMClientCallbackHandler'," +
+                                "'properties.group.id' = 'flink_consumer_group'," +
                                 "'scan.startup.mode' = 'latest-offset'," +
                                 "'format' = 'json'" +
                         ")"
@@ -150,7 +128,7 @@ public class KafkaConsumerJob {
                         "    'format' = 'parquet'," +
 //                        "    'path'='file:///tmp/output/user_action/'," +
                         // "    'path'='s3://flink-bucket/user_action/'," +
-                        "    'path'='" + props.getProperty("s3.output.path") + "'," +
+                        "    'path'='s3://jiazhi110-flink-staging-bucket/user_action/'," +
                         "    'sink.rolling-policy.file-size' = '100MB'," +
                         "    'sink.rolling-policy.rollover-interval' = '1 min'," +
                         "    'sink.partition-commit.policy.kind' = 'success-file'," +

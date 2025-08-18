@@ -2,27 +2,26 @@ import json
 import socket
 from confluent_kafka import Producer
 from aws_msk_iam_sasl_signer import MSKAuthTokenProvider
-
-import json
-import socket
-import time
-from confluent_kafka import Producer
-from aws_msk_iam_sasl_signer.MSKAuthTokenProvider import generate_auth_token
+import certifi   # 用作 ssl CA 的 fallback（可选但建议
 
 class MSKTokenProvider:
     def __init__(self, region):
         self.region = region
 
     def token(self):
-        token, _ = generate_auth_token(self.region)
-        return token
+        # generate_auth_token 返回 (token, expiry_ms)
+        auth_token, expiry_ms = MSKAuthTokenProvider.generate_auth_token(self.region)
+        # confluent expects expiry as seconds since epoch (float)
+        expiry_seconds = expiry_ms / 1000.0
+        return auth_token, expiry_seconds
 
 def get_producer(bootstrap_servers, security_config=None):
     conf = {
         'bootstrap.servers': bootstrap_servers,
         'client.id': f'msk-iam-producer-{socket.gethostname()}',
         'socket.timeout.ms': 30000,
-        'api.version.request.timeout.ms': 30000
+        'api.version.request.timeout.ms': 30000,
+        'debug': 'security,broker,protocol'
     }
 
     if security_config and security_config.get('mechanism') == 'AWS_MSK_IAM':
@@ -30,9 +29,11 @@ def get_producer(bootstrap_servers, security_config=None):
 
         print(f"token_provider is {token_provider}")
 
-        def oauth_cb(oauth_config):
-            token = token_provider.token()
-            return token, int(time.time() * 1000)
+        # confluent 的 oauth_cb 接受一个可选的 config_str 参数
+        def oauth_cb(config_str=None):
+            token, expiry_seconds = token_provider.token()
+            # 返回 (token_str, expiry_time_in_seconds_since_epoch)
+            return token, float(expiry_seconds)
 
 # AWS_MSK_IAM 是你在代码或者配置里用来标识“用 IAM 认证”的一个标识符，属于逻辑层的约定。
 # OAUTHBEARER 是 Kafka SASL 协议里规定的机制名，是 Kafka 客户端实际使用的认证协议名称。
@@ -46,9 +47,9 @@ def get_producer(bootstrap_servers, security_config=None):
 
         conf.update({
             'security.protocol': 'SASL_SSL',
-            'sasl.mechanisms': 'OAUTHBEARER',
+            'sasl.mechanisms': 'OAUTHBEARER',     # 要用标准名 OAUTHBEARER
             'oauth_cb': oauth_cb,
-            'ssl.ca.location': security_config.get('ssl_cafile')
+            'ssl.ca.location': security_config.get('ssl_cafile') or certifi.where()
         })
 
     print("--- Creating Kafka Producer with the following configuration: ---")

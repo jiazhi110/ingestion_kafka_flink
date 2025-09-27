@@ -30,6 +30,13 @@ jobs:
         working-directory: ./flink_jobs  # 工作目录：Flink源代码位置
         run: mvn test  # 运行测试：JUnit等；失败时pipeline中止，确保质量
 
+        # 打包 Flink 應用程式
+      - name: Build Flink Job with Maven
+        working-directory: ./flink_jobs
+        run: mvn clean package -DskipTests
+
+        # 第 4 步：設定 AWS 憑證
+        # 這裡我們使用 OIDC，這是最現代、最安全的作法，不需要長期有效的 Access Key
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4  # OIDC认证：安全，无需Access Key
         with:

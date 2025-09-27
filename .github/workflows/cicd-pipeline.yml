@@ -44,7 +44,8 @@ jobs:
         id: build-image  # 步骤ID：输出完整镜像URI
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}  # 注册表URI：从登录步骤获取
-          ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}  # 多环境逻辑：main用prod repo，develop用dev repo
+          # ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}  # 多环境逻辑：main用prod repo，develop用dev repo
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
         run: |
           # 构建自定义标签：branch + short SHA，便于追溯版本
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)

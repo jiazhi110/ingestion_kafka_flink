@@ -35,7 +35,7 @@ jobs:
         working-directory: ./flink_jobs
         run: mvn clean package -DskipTests
 
-        # 第 4 步：設定 AWS 憑證
+        # 設定 AWS 憑證
         # 這裡我們使用 OIDC，這是最現代、最安全的作法，不需要長期有效的 Access Key
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4  # OIDC认证：安全，无需Access Key
@@ -83,24 +83,24 @@ jobs:
       #       Image URI: ${{ steps.build-image.outputs.image }}
       #       Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-  # trigger-infra-cd:  # 新增job：CI成功后触发infra repo的CD
-  #   needs: build-test-push  # 依赖：等待CI完成
-  #   runs-on: ubuntu-latest
-  #   if: always()  # 条件：始终触发（即使CI失败，便于debug infra）
-  #   steps:
-  #     - name: Dispatch to data-platform-infra
-  #       uses: peter-evans/repository-dispatch@v3  # dispatch action：跨repo事件触发
-  #       with:
-  #         token: ${{ secrets.GITHUB_TOKEN }}  # token：默认GITHUB_TOKEN，需repo write权限
-  #         repository: your-org/data-platform-infra  # 目标repo：替换成你的org/repo（e.g., username/data-platform-infra）
-  #         event-type: flink-deploy  # 事件类型：infra workflow监听这个（自定义）
-  #         client-payload: >  # payload：JSON数据，传给infra（ref、URI、环境）
-  #           {
-  #             "ref": "${{ github.ref_name }}",
-  #             "image_uri": "${{ needs.build-test-push.outputs.image }}",
-  #             "sha": "${{ github.sha }}",
-  #             "environment": "${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
-  #           }
+  trigger-infra-cd:  # 新增job：CI成功后触发infra repo的CD
+    needs: build-test-push  # 依赖：等待CI完成
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Dispatch to data-platform-infra
+        uses: peter-evans/repository-dispatch@v3  # dispatch action：跨repo事件触发
+        with:
+          token: ${{ secrets.repo-dispatch-token }}  # PAT 的含义：Personal Access Token，即“个人访问令牌”。需repo write权限
+          repository: jiazhi110/data-platform-infra  # 目标repo：替换成你的org/repo（e.g., username/data-platform-infra）
+          event-type: flink-deploy  # 事件类型：infra workflow监听这个（自定义）
+          client-payload: >  # payload：JSON数据，传给infra（ref、URI、环境）
+            {
+              "ref": "${{ github.ref_name }}",
+              "image_uri": "${{ needs.build-test-push.outputs.image }}",
+              "sha": "${{ github.sha }}",
+              "environment": "${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
+            }
 
   #     - name: Send Dispatch Email  # 通知：dispatch结果邮件
   #       if: always()

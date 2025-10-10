@@ -51,8 +51,9 @@ jobs:
         id: build-image  # 步骤ID：输出完整镜像URI
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}  # 注册表URI：从登录步骤获取
-          # ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}  # 多环境逻辑：main用prod repo，develop用dev repo
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
+          ECR_REPOSITORY: ${{ github.ref_name == 'main' && 'data-platform-prod-producer-repo' || 'data-platform-dev-producer-repo' }}  # 多环境逻辑：main用prod repo，develop用dev repo
+          # 否定了用secret 的用法， 改用plaintext 的方式，因为如果用secret output，会导致 Skip output 'image'，因为信息敏感。
+          # ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
         run: |
           # 构建自定义标签：branch + short SHA，便于追溯版本
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
@@ -91,7 +92,7 @@ jobs:
       - name: Dispatch to data-platform-infra
         uses: peter-evans/repository-dispatch@v3  # dispatch action：跨repo事件触发
         with:
-          token: ${{ secrets.repo-dispatch-token }}  # PAT 的含义：Personal Access Token，即“个人访问令牌”。需repo write权限
+          token: ${{ secrets.REPO_DISPATCH_TOKEN }}  # PAT 的含义：Personal Access Token，即“个人访问令牌”。需repo write权限
           repository: jiazhi110/data-platform-infra  # 目标repo：替换成你的org/repo（e.g., username/data-platform-infra）
           event-type: flink-deploy  # 事件类型：infra workflow监听这个（自定义）
           client-payload: >  # payload：JSON数据，传给infra（ref、URI、环境）
@@ -101,7 +102,7 @@ jobs:
               "sha": "${{ github.sha }}",
               "environment": "${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
             }
-
+              
   #     - name: Send Dispatch Email  # 通知：dispatch结果邮件
   #       if: always()
   #       uses: dawidd6/action-send-mail@v4

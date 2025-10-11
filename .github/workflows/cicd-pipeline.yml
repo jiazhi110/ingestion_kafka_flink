@@ -52,9 +52,9 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}  # 注册表URI：从登录步骤获取
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && 'data-platform-prod-producer-repo' || 'data-platform-dev-producer-repo' }}  # 多环境逻辑：main用prod repo，develop用dev repo
-          ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}
+          # ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}
           # 否定了用secret 的用法， 改用plaintext 的方式，因为如果用secret output，会导致 Skip output 'image'，因为信息敏感。
-          # ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
           # ECR_REPOSITORY: 'ingestion_kafka_flink'
         run: |
           # 构建自定义标签：branch + short SHA，便于追溯版本
@@ -105,7 +105,7 @@ jobs:
           client-payload: >  # payload：JSON数据，传给infra（ref、URI、环境） # 多行 JSON，dispatch 中组合 image_uri（用 registry + repo，避免空/ skip）
             {
               "ref": "${{ github.ref_name }}",
-              "image_uri": "${{ needs.build-test-push.outputs.registry }}/${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}:latest",
+              "image_uri": "${{ needs.build-test-push.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest",
               "sha": "${{ github.sha }}",
               "environment": "${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
             }

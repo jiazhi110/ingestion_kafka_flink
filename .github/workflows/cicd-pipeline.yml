@@ -15,8 +15,11 @@ jobs:
       contents: read   # 读权限：拉取repo代码
     outputs:
       # image: ${{ steps.build-image.outputs.image }}  # job输出：镜像URI，供下游dispatch使用
-      image: ${{ steps.build-image.outputs.encoded_image }}  # job输出：base64
+      # image: ${{ steps.build-image.outputs.encoded_image }}  # job输出：base64
       # image: ${{ steps.login-ecr.outputs.registry }}  # job输出：组合 image_uri（用 registry + repo，避免空/ skip）
+      registry: ${{ steps.login-ecr.outputs.registry }}
+      repository: ${{ steps.build-image.outputs.repository }}
+      tag: ${{ steps.build-image.outputs.tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4  # 升级到v4：更快拉取代码，支持子模块
@@ -75,8 +78,8 @@ jobs:
           
           # 无需 output full image（避免 skip），只需 registry 已够
           # 不要再输出完整的 image URI
-          # echo "repository=${ECR_REPOSITORY}" >> $GITHUB_OUTPUT
-          # echo "tag=latest" >> $GITHUB_OUTPUT
+          echo "repository=${ECR_REPOSITORY}" >> $GITHUB_OUTPUT
+          echo "tag=latest" >> $GITHUB_OUTPUT
 
       # 自己玩暂时不用
       # - name: Send Email Notification
@@ -109,7 +112,7 @@ jobs:
           client-payload: >  # payload：JSON数据，传给infra（ref、URI、环境） # 多行 JSON，dispatch 中组合 image_uri（用 registry + repo，避免空/ skip）
             {
               "ref": "${{ github.ref_name }}",
-              "encoded_image_uri": "${{ needs.build-test-push.outputs.encoded_image }}",
+              "encoded_image_uri": "${{ needs.build-test-push.outputs.registry }}/${{ needs.build-test-push.outputs.repository }}:${{ needs.build-test-push.outputs.tag }}",
               "sha": "${{ github.sha }}",
               "environment": "${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
             }

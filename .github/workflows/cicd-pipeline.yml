@@ -14,7 +14,8 @@ jobs:
       id-token: write  # OIDC权限：允许GitHub向AWS请求临时凭证
       contents: read   # 读权限：拉取repo代码
     outputs:
-      image: ${{ steps.build-image.outputs.image }}  # job输出：镜像URI，供下游dispatch使用
+      # image: ${{ steps.build-image.outputs.image }}  # job输出：镜像URI，供下游dispatch使用
+      image: ${{ steps.login-ecr.outputs.registry }}  # job输出：镜像URI，供下游dispatch使用
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4  # 升级到v4：更快拉取代码，支持子模块

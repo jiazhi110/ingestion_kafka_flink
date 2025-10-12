@@ -13,8 +13,9 @@ jobs:
     permissions:
       id-token: write  # OIDC权限：允许GitHub向AWS请求临时凭证
       contents: read   # 读权限：拉取repo代码
-    outputs:
-      image: ${{ steps.build-image.outputs.image }}  # job输出：镜像URI，供下游dispatch使用
+    # 改用 artifact
+    # outputs:
+      # image: ${{ steps.build-image.outputs.image }}  # job输出：镜像URI，供下游dispatch使用
       # image: ${{ steps.build-image.outputs.encoded_image }}  # job输出：base64
       # image: ${{ steps.login-ecr.outputs.registry }}  # job输出：组合 image_uri（用 registry + repo，避免空/ skip）
       # registry: ${{ steps.login-ecr.outputs.registry }}
@@ -55,13 +56,13 @@ jobs:
       - name: Build, tag, and push image to Amazon ECR
         id: build-image  # 步骤ID：输出完整镜像URI
         env:
-          # ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}  # 注册表URI：从登录步骤获取,用这个会导致 Skip output 'image'，因为信息敏感。所以弃用改用plaintext
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}  # 注册表URI：从登录步骤获取,用这个会导致 Skip output 'image'，因为信息敏感。所以弃用改用plaintext
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && 'data-platform-prod-producer-repo' || 'data-platform-dev-producer-repo' }}  # 多环境逻辑：main用prod repo，develop用dev repo
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}
           # 否定了用secret 的用法， 改用plaintext 的方式，因为如果用secret output，会导致 Skip output 'image'，因为信息敏感。
-          # ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
-          ECR_REGISTRY: '366019841267.dkr.ecr.ap-southeast-1.amazonaws.com'
-          ECR_REPOSITORY: 'ingestion_kafka_flink'
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
+          # ECR_REGISTRY: '366019841267.dkr.ecr.ap-southeast-1.amazonaws.com'
+          # ECR_REPOSITORY: 'ingestion_kafka_flink'
         run: |
           # 构建自定义标签：branch + short SHA，便于追溯版本
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
@@ -73,7 +74,11 @@ jobs:
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT  # 输出latest URI到job outputs
+          # 最终结果，改用 artifact
+          # 把 image_uri 写进文件（artifact）
+          echo "$ECR_REGISTRY/$ECR_REPOSITORY:latest" > image_uri.txt
+
+          # echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT  # 输出latest URI到job outputs
 
           # echo "encoded_image=$(echo $ECR_REGISTRY/$ECR_REPOSITORY:latest | base64 -w 0)" >> $GITHUB_OUTPUT
         
@@ -81,6 +86,12 @@ jobs:
           # 不要再输出完整的 image URI
           # echo "repository=${ECR_REPOSITORY}" >> $GITHUB_OUTPUT
           # echo "tag=latest" >> $GITHUB_OUTPUT
+
+      - name: Upload image artifact (image-info)
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-info
+          path: image_uri.txt
 
       # 自己玩暂时不用
       # - name: Send Email Notification
@@ -104,6 +115,20 @@ jobs:
     runs-on: ubuntu-latest
     if: success()
     steps:
+      # --- 新增步骤 1: 下载 artifact ---
+      - name: Download image_uri artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: image-info # 必须和上传时用的名字完全一样
+
+      # --- 新增步骤 2: 从文件中读取 image_uri ---
+      - name: Read image_uri from file
+        id: image_uri_step # 给这个步骤一个id，方便后面引用它的输出
+        run: |
+          # 读取文件内容，并通过 GITHUB_OUTPUT 设置为这个步骤的输出变量
+          # 这样，后续步骤就可以通过 steps.image_uri_step.outputs.image_uri 来获取这个值
+          echo "image_uri=$(cat ./image_uri.txt)" >> $GITHUB_OUTPUT
+
       - name: Dispatch to data-platform-infra
         uses: peter-evans/repository-dispatch@v3  # dispatch action：跨repo事件触发
         with:
@@ -113,7 +138,7 @@ jobs:
           client-payload: >  # payload：JSON数据，传给infra（ref、URI、环境） # 多行 JSON，dispatch 中组合 image_uri（用 registry + repo，避免空/ skip）
             {
               "ref": "${{ github.ref_name }}",
-              "image_uri": "${{ needs.build-test-push.outputs.image }}",
+              "image_uri": "${{ steps.image_uri_step.outputs.image_uri }}",
               "sha": "${{ github.sha }}",
               "environment": "${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
             }

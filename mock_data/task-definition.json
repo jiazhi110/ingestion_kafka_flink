@@ -1,5 +1,5 @@
 {
-    "family": "data-platform-dev-producer-family",
+    "family": "data-platform-dev-mock-data-task",
     "networkMode": "awsvpc",
     "requiresCompatibilities": [
         "FARGATE"
@@ -10,17 +10,16 @@
     "taskRoleArn": "arn:aws:iam::366019841267:role/data-platform-dev-ecs-task-role",
     "containerDefinitions": [
         {
-            "name": "producer-container-name",
+            "name": "mock-data-generator",
             "image": "placeholder-image-uri",
             "logConfiguration": {
                 "logDriver": "awslogs",
                 "options": {
                     "awslogs-group": "/ecs/data-platform-dev-family",
                     "awslogs-region": "us-east-1",
-                    "awslogs-stream-prefix": "producer"
+                    "awslogs-stream-prefix": "mock-data"
                 }
             }
         }
     ]
 }
-

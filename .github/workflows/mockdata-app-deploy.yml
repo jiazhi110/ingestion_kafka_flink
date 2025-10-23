@@ -121,20 +121,20 @@ jobs:
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: mock_data/task-definition.json # 使用我们新创建的模板文件
-          container-name: producer-container-name
+          container-name: mock-data-generator
           image: ${{ steps.build-image-producer.outputs.image_uri }}
 
       - name: Debug Inputs for Run Task
         run: |
           cat mock_data/task-definition.json
-          echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition }}"
+          echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition-arn }}"
 
       - name: 5b. 运行一次性的 ECS 任务 (使用 AWS CLI)
         run: |
           echo "Running task with AWS CLI..."
           aws ecs run-task \
             --cluster ${{ github.ref == 'refs/heads/main' && 'data-platform-prod-cluster' || 'data-platform-dev-cluster' }} \
-            --task-definition ${{ steps.render-task-def.outputs.task-definition }} \
+            --task-definition ${{ steps.render-task-def.outputs.task-definition-arn }} \
             --launch-type FARGATE \
             --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PRIVATE_SUBNET_IDS }}],securityGroups=[${{ secrets.PRODUCER_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}" \
             --count 1

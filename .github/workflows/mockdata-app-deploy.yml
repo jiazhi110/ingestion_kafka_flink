@@ -126,7 +126,7 @@ jobs:
 
       - name: Debug Inputs for Run Task
         run: |
-          ls -l mock_data/task-definition.json
+          cat mock_data/task-definition.json
           echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition }}"
 
       - name: 5b. 运行一次性的 ECS 任务 (使用 AWS CLI)

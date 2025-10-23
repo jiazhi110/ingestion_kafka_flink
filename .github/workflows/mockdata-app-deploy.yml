@@ -97,7 +97,7 @@ jobs:
         env:
           # ECR_REPOSITORY: ${{ github.ref == 'refs/heads/main' && secrets.PROD_PRODUCER_ECR_REPO || secrets.DEV_PRODUCER_ECR_REPO }}
           IMAGE_TAG: ${{ github.sha }}
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}  # 注册表URI：从登录步骤获取,用这个会导致 Skip output 'image'，因为信息敏感。所以弃用改用plaintext
+          ECR_REGISTRY: ${{ steps.login-ecr-producer.outputs.registry }}  # 注册表URI：从登录步骤获取,用这个会导致 Skip output 'image'，因为信息敏感。所以弃用改用plaintext
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && 'data-platform-prod-producer-repo' || 'data-platform-dev-producer-repo' }}  # 多环境逻辑：main用prod repo，develop用dev repo
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}
           # 否定了用secret 的用法， 改用plaintext 的方式，因为如果用secret output，会导致 Skip output 'image'，因为信息敏感。

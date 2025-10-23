@@ -127,14 +127,14 @@ jobs:
       - name: Debug Inputs for Run Task
         run: |
           ls -l mock_data/task-definition.json
-          echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition-arn }}"
+          echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition }}"
 
       - name: 5b. 运行一次性的 ECS 任务 (使用 AWS CLI)
         run: |
           echo "Running task with AWS CLI..."
           aws ecs run-task \
             --cluster ${{ github.ref == 'refs/heads/main' && 'data-platform-prod-cluster' || 'data-platform-dev-cluster' }} \
-            --task-definition ${{ steps.render-task-def.outputs.task-definition-arn }} \
+            --task-definition ${{ steps.render-task-def.outputs.task-definition }} \
             --launch-type FARGATE \
             --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PRIVATE_SUBNET_IDS }}],securityGroups=[${{ secrets.PRODUCER_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}" \
             --count 1

@@ -126,7 +126,7 @@ jobs:
 
       - name: Debug Inputs for Run Task
         run: |
-          echo "Rendered task definition ARN: ${{ steps.render-task-def.outputs.task-definition-arn }}
+          echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition-arn }}"
 
       - name: 5b. 运行一次性的 ECS 任务 (使用 AWS CLI)
         run: |

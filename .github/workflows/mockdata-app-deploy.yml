@@ -15,6 +15,11 @@ on:
       - 'mock_data/**'
   # 触发器 2: 允许在 GitHub UI 上手动触发
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'The branch to check out'
+        required: true
+        default: 'develop'
 
 jobs:
   # ===================================================================
@@ -31,6 +36,8 @@ jobs:
 #     steps:
 #       - name: 1. 检出代码
 #         uses: actions/checkout@v4
+#         with:
+#           ref: ${{ github.event.inputs.branch }}
 #       - name: 2. 配置 Java 和 Maven 缓存
 #         uses: actions/setup-java@v4
 #         with:
@@ -83,6 +90,8 @@ jobs:
     steps:
       - name: 1. 检出代码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
       - name: 2. 配置 AWS 身份凭证 (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -114,6 +123,10 @@ jobs:
           task-definition: mock_data/task-definition.json # 使用我们新创建的模板文件
           container-name: producer-container-name
           image: ${{ steps.build-image-producer.outputs.image_uri }}
+
+      - name: Debug Inputs for Run Task
+        run: |
+          echo "Rendered task definition ARN: ${{ steps.render-task-def.outputs.task-definition-arn }}
 
       - name: 5b. 运行一次性的 ECS 任务 (使用 AWS CLI)
         run: |

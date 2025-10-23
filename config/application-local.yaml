@@ -1,0 +1,26 @@
+# 本地开发环境配置
+
+# Kafka配置
+kafka:
+  bootstrap_servers: "localhost:9092"
+  topic: "user_behavior_local"
+  security: null  # 本地环境不使用安全认证
+
+# MinIO配置（本地S3兼容存储）
+minio:
+  endpoint: "http://localhost:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  bucket: "flink-local-bucket"
+
+# Flink配置
+flink:
+  checkpoint_interval: 10000  # 10秒
+  parallelism: 1
+  checkpoint_dir: "file:///tmp/flink/checkpoints"
+  savepoint_dir: "file:///tmp/flink/savepoints"
+
+# 日志配置
+logging:
+  level: "DEBUG"
+  file: "/tmp/flink/app.log"

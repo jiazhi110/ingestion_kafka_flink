@@ -6,3 +6,11 @@ pandas==2.2.2
 
 # 用於連接 Kafka 並發送訊息
 kafka-python==2.0.2
+
+#SASL/SCRAM
+# sasl==0.3.1
+
+#移除 sasl，换成 AWS 官方的 IAM 签名
+aws-msk-iam-sasl-signer-python==1.0.2
+
+confluent-kafka==2.11.0

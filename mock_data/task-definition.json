@@ -1,0 +1,26 @@
+{
+    "family": "data-platform-dev-producer-family",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "256",
+    "memory": "512",
+    "executionRoleArn": "arn:aws:iam::366019841267:role/data-platform-dev-ecs-task-exec-role",
+    "taskRoleArn": "arn:aws:iam::366019841267:role/data-platform-dev-ecs-task-role",
+    "containerDefinitions": [
+        {
+            "name": "producer-container-name",
+            "image": "placeholder-image-uri",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/data-platform-dev-family",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "producer"
+                }
+            }
+        }
+    ]
+}
+

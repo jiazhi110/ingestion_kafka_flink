@@ -65,16 +65,18 @@ services:
   # Flink JobManager 服务
   jobmanager:
     # image: apache/flink:1.17.2-scala_2.12 # 使用官方Flink镜像，确保版本与PyFlink一致
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: my-flink-custom:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    # image: my-flink-custom:latest
+    image: justinbobsmith/ingestion-kafka-flink:develop-f6c71ce571aa85f42fe80d08d9289a0626515643
     container_name: jobmanager
     ports:
       - "8081:8081" # Flink Web UI 端口映射到宿主机
       - "6123:6123" # Job Submission (RPC) Port - 这个是关键！
     volumes:
       - ./flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar:/opt/flink/usrlib/my-app.jar
+      # - ./config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
     command: jobmanager # 启动JobManager
     environment:
       JOB_MANAGER_RPC_ADDRESS: jobmanager
@@ -86,19 +88,22 @@ services:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_KEY: minioadmin
       FLINK_PROPERTIES_s3.path.style.access: "true" # MinIO通常需要路径样式访问
+      # HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
     networks:
       - data-pipeline-net
 
   # Flink TaskManager 服务
   taskmanager:
     # image: apache/flink:1.17.2-scala_2.12 # 官方Flink镜像
-    image: my-flink-custom:latest
+    # image: my-flink-custom:latest
+    image: justinbobsmith/ingestion-kafka-flink:develop-f6c71ce571aa85f42fe80d08d9289a0626515643
     container_name: taskmanager
     depends_on:
       - jobmanager # 确保JobManager先启动
     # 正確的掛載方式
     volumes:
       - ./flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar:/opt/flink/usrlib/my-app.jar
+      # - ./config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
     command: taskmanager # 启动TaskManager
     environment:
       JOB_MANAGER_RPC_ADDRESS: jobmanager
@@ -110,6 +115,7 @@ services:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_KEY: minioadmin
       FLINK_PROPERTIES_s3.path.style.access: "true"
+      # HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
     networks:
       - data-pipeline-net
 

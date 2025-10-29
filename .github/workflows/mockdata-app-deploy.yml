@@ -63,20 +63,29 @@ jobs:
 
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f mock_data/Dockerfile .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-      
-      - name: 5a. 渲染任务定义 (填入新镜像地址)
-        id: render-task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: mock_data/task-definition.json # 使用我们新创建的模板文件
-          container-name: mock-data-generator
-          image: ${{ steps.build-image-producer.outputs.image_uri }}
+          # echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Debug Inputs for Run Task
-        run: |
-          cat mock_data/task-definition.json
-          echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition }}"
+          # --- 新增：更新SSM参数 ---
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "Updating Mockdata image URI to: $IMAGE_URI"
+          aws ssm put-parameter \
+            --name "/data-platform/dev/ingestion/mockdata_image_url" \
+            --value "$IMAGE_URI" \
+            --type "String" \
+            --overwrite
+      
+      # - name: 5a. 渲染任务定义 (填入新镜像地址)
+      #   id: render-task-def
+      #   uses: aws-actions/amazon-ecs-render-task-definition@v1
+      #   with:
+      #     task-definition: mock_data/task-definition.json # 使用我们新创建的模板文件
+      #     container-name: mock-data-generator
+      #     image: ${{ steps.build-image-producer.outputs.image_uri }}
+      #
+      # - name: Debug Inputs for Run Task
+      #   run: |
+      #     cat mock_data/task-definition.json
+      #     echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition }}"
 
       # 弃用 deprecate ， 这个是 cli 方案，但是获取不到steps.render-task-def.outputs.task-definitio的值，所以弃掉了，但其实根本不需要获取部署，因为eventbridge 它自己就能运行task definition 不需要ECS的 cluster 和 service
       # - name: 5b. 运行一次性的 ECS 任务 (使用 AWS CLI)

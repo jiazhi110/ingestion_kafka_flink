@@ -8,6 +8,16 @@ on:
       - develop  # develop（dev环境）
     paths:
       - 'flink_jobs/**'        # flink_jobs 文件夹修改时触发
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'The branch to build from'
+        required: true
+        default: 'develop'
+        type: choice
+        options:
+        - main
+        - develop
 
 jobs:
   build-test-push:
@@ -27,6 +37,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4  # 升级到v4：更快拉取代码，支持子模块
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref }}
 
       - name: Set up JDK 11
         uses: actions/setup-java@v4  # v4：优化Maven缓存，JDK11适合Flink
@@ -64,12 +76,13 @@ jobs:
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}
           # 否定了用secret 的用法， 改用plaintext 的方式，因为如果用secret output，会导致 Skip output 'image'，因为信息敏感。
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
+          BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref_name }}
           # ECR_REGISTRY: '366019841267.dkr.ecr.ap-southeast-1.amazonaws.com'
           # ECR_REPOSITORY: 'ingestion_kafka_flink'
         run: |
           # 构建自定义标签：branch + short SHA，便于追溯版本
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE_TAG="${{ github.ref_name }}-${SHORT_SHA}"
+          IMAGE_TAG="${{ env.BRANCH_NAME }}-${SHORT_SHA}"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .  # 构建镜像：假设Dockerfile在root或./flink_jobs
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  # 推送版本标签
           

@@ -6,10 +6,23 @@ on:
     branches:
       - main  # 触发分支：main（prod环境）
       - develop  # develop（dev环境）
+    paths:
+      - 'flink_jobs/**'        # flink_jobs 文件夹修改时触发
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'The branch to build from'
+        required: true
+        default: 'develop'
+        type: choice
+        options:
+        - main
+        - develop
 
 jobs:
   build-test-push:
     runs-on: ubuntu-latest  # 运行环境：标准Ubuntu VM，适合Java/Docker构建
+    # if: contains(github.event.head_commit.modified, 'flink_jobs/')
     permissions:
       id-token: write  # OIDC权限：允许GitHub向AWS请求临时凭证
       contents: read   # 读权限：拉取repo代码
@@ -24,6 +37,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4  # 升级到v4：更快拉取代码，支持子模块
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref }}
 
       - name: Set up JDK 11
         uses: actions/setup-java@v4  # v4：优化Maven缓存，JDK11适合Flink
@@ -61,22 +76,32 @@ jobs:
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}
           # 否定了用secret 的用法， 改用plaintext 的方式，因为如果用secret output，会导致 Skip output 'image'，因为信息敏感。
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
+          BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref_name }}
           # ECR_REGISTRY: '366019841267.dkr.ecr.ap-southeast-1.amazonaws.com'
           # ECR_REPOSITORY: 'ingestion_kafka_flink'
         run: |
           # 构建自定义标签：branch + short SHA，便于追溯版本
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE_TAG="${{ github.ref_name }}-${SHORT_SHA}"
+          IMAGE_TAG="${{ env.BRANCH_NAME }}-${SHORT_SHA}"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .  # 构建镜像：假设Dockerfile在root或./flink_jobs
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  # 推送版本标签
           
           # 推送latest标签：覆盖更新，供Terraform data源拉取最新
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # --- 新增：更新SSM参数 --- 
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+          echo "Updating Flink image URI to: $IMAGE_URI"
+          aws ssm put-parameter \
+            --name "/data-platform/dev/ingestion/flink_image_url" \
+            --value "$IMAGE_URI" \
+            --type "String" \
+            --overwrite
           
           # 最终结果，改用 artifact
           # 把 image_uri 写进文件（artifact）
-          echo "$ECR_REGISTRY/$ECR_REPOSITORY:latest" > image_uri.txt
+          # echo "$ECR_REGISTRY/$ECR_REPOSITORY:latest" > image_uri.txt
 
           # echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT  # 输出latest URI到job outputs
 
@@ -87,11 +112,11 @@ jobs:
           # echo "repository=${ECR_REPOSITORY}" >> $GITHUB_OUTPUT
           # echo "tag=latest" >> $GITHUB_OUTPUT
 
-      - name: Upload image artifact (image-info)
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-info
-          path: image_uri.txt
+      # - name: Upload image artifact (image-info)
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: image-info
+      #     path: image_uri.txt
 
       # 自己玩暂时不用
       # - name: Send Email Notification
@@ -110,45 +135,45 @@ jobs:
       #       Image URI: ${{ steps.build-image.outputs.image }}
       #       Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-  trigger-infra-cd:  # 新增job：CI成功后触发infra repo的CD
-    needs: build-test-push  # 依赖：等待CI完成
-    runs-on: ubuntu-latest
-    if: success()
-    steps:
-      # --- 新增步骤 1: 下载 artifact ---
-      - name: Download image_uri artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: image-info # 必须和上传时用的名字完全一样
-
-      # --- 新增步骤 2: 从文件中读取 image_uri ---
-      - name: Read image_uri from file
-        id: image_uri_step # 给这个步骤一个id，方便后面引用它的输出
-        run: |
-          # 读取文件内容，并通过 GITHUB_OUTPUT 设置为这个步骤的输出变量
-          # 这样，后续步骤就可以通过 steps.image_uri_step.outputs.image_uri 来获取这个值
-          echo "image_uri=$(cat ./image_uri.txt)" >> $GITHUB_OUTPUT
-
-      - name: Dispatch to data-platform-infra
-        uses: peter-evans/repository-dispatch@v3  # dispatch action：跨repo事件触发
-        with:
-          token: ${{ secrets.REPO_DISPATCH_TOKEN }}  # PAT 的含义：Personal Access Token，即“个人访问令牌”。需repo write权限
-          repository: jiazhi110/data-platform-infra  # 目标repo：替换成你的org/repo（e.g., username/data-platform-infra）
-          event-type: flink-deploy  # 事件类型：infra workflow监听这个（自定义）
-          client-payload: >  # payload：JSON数据，传给infra（ref、URI、环境） # 多行 JSON，dispatch 中组合 image_uri（用 registry + repo，避免空/ skip）
-            {
-              "ref": "${{ github.ref_name }}",
-              "image_uri": "${{ steps.image_uri_step.outputs.image_uri }}",
-              "sha": "${{ github.sha }}",
-              "environment": "${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
-            }
-              
-  #     - name: Send Dispatch Email  # 通知：dispatch结果邮件
-  #       if: always()
-  #       uses: dawidd6/action-send-mail@v4
+  # trigger-infra-cd:  # 新增job：CI成功后触发infra repo的CD
+  #   needs: build-test-push  # 依赖：等待CI完成
+  #   runs-on: ubuntu-latest
+  #   if: success()
+  #   steps:
+  #     # --- 新增步骤 1: 下载 artifact ---
+  #     - name: Download image_uri artifact
+  #       uses: actions/download-artifact@v4
   #       with:
-  #         # 配置同上（复用SMTP secrets）
-  #         subject: 'Flink ETL Trigger Infra: ${{ job.status }}'
-  #         body: |
-  #           Dispatched to data-platform-infra with image: ${{ needs.build-test-push.outputs.image }}.
-  #           Environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}.
+  #         name: image-info # 必须和上传时用的名字完全一样
+  #
+  #     # --- 新增步骤 2: 从文件中读取 image_uri ---
+  #     - name: Read image_uri from file
+  #       id: image_uri_step # 给这个步骤一个id，方便后面引用它的输出
+  #       run: |
+  #         # 读取文件内容，并通过 GITHUB_OUTPUT 设置为这个步骤的输出变量
+  #         # 这样，后续步骤就可以通过 steps.image_uri_step.outputs.image_uri 来获取这个值
+  #         echo "image_uri=$(cat ./image_uri.txt)" >> $GITHUB_OUTPUT
+  #
+  #     - name: Dispatch to data-platform-infra
+  #       uses: peter-evans/repository-dispatch@v3  # dispatch action：跨repo事件触发
+  #       with:
+  #         token: ${{ secrets.REPO_DISPATCH_TOKEN }}  # PAT 的含义：Personal Access Token，即“个人访问令牌”。需repo write权限
+  #         repository: jiazhi110/data-platform-infra  # 目标repo：替换成你的org/repo（e.g., username/data-platform-infra）
+  #         event-type: flink-deploy  # 事件类型：infra workflow监听这个（自定义）
+  #         client-payload: >  # payload：JSON数据，传给infra（ref、URI、环境） # 多行 JSON，dispatch 中组合 image_uri（用 registry + repo，避免空/ skip）
+  #           {
+  #             "ref": "${{ github.ref_name }}",
+  #             "image_uri": "${{ steps.image_uri_step.outputs.image_uri }}",
+  #             "sha": "${{ github.sha }}",
+  #             "environment": "${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
+  #           }
+  #             
+  # #     - name: Send Dispatch Email  # 通知：dispatch结果邮件
+  # #       if: always()
+  # #       uses: dawidd6/action-send-mail@v4
+  # #       with:
+  # #         # 配置同上（复用SMTP secrets）
+  # #         subject: 'Flink ETL Trigger Infra: ${{ job.status }}'
+  # #         body: |
+  # #           Dispatched to data-platform-infra with image: ${{ needs.build-test-push.outputs.image }}.
+  # #           Environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}.

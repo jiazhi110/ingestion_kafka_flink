@@ -15,65 +15,18 @@ on:
       - 'mock_data/**'
   # 触发器 2: 允许在 GitHub UI 上手动触发
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'The branch to check out'
+        required: true
+        default: 'develop'
 
 jobs:
   # ===================================================================
-  # Job 1: 构建并部署 Flink 应用 (作为长期服务)
-  # ===================================================================
-#   build-and-deploy-flink-app:
-#     name: Build and Deploy Flink App (as a Service)
-#     # 条件：当手动触发时，或当 push 事件修改了 flink_jobs/ 目录时运行
-#     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[force deploy]') || (github.event_name == 'push' && (join(github.event.commits.*.modified, ' ') contains 'flink_jobs/' || join(github.event.commits.*.added, ' ') contains 'flink_jobs/'))
-#     runs-on: ubuntu-latest
-#     permissions:
-#       id-token: write
-#       contents: read
-#     steps:
-#       - name: 1. 检出代码
-#         uses: actions/checkout@v4
-#       - name: 2. 配置 Java 和 Maven 缓存
-#         uses: actions/setup-java@v4
-#         with:
-#           java-version: '11'
-#           distribution: 'temurin'
-#           cache: maven
-#       - name: 3. 配置 AWS 身份凭证 (OIDC)
-#         uses: aws-actions/configure-aws-credentials@v4
-#         with:
-#           role-to-assume: ${{ github.ref == 'refs/heads/main' && secrets.PROD_AWS_ROLE_ARN || secrets.DEV_AWS_ROLE_ARN }}
-#           aws-region: ${{ secrets.AWS_REGION }}
-#       - name: 4. 登录到 Amazon ECR
-#         id: login-ecr-flink
-#         uses: aws-actions/amazon-ecr-login@v2
-#       - name: 5. 运行 Maven 测试和打包
-#         run: mvn -f flink_jobs/pom.xml clean package
-#       - name: 6. 构建并推送 Flink Docker 镜像
-#         id: build-image-flink
-#         env:
-#           ECR_REPOSITORY: ${{ github.ref == 'refs/heads/main' && secrets.PROD_FLINK_ECR_REPO || secrets.DEV_FLINK_ECR_REPO }}
-#           IMAGE_TAG: ${{ github.sha }}
-#         run: |
-#           docker build -t ${{ steps.login-ecr-flink.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG -f flink_jobs/Dockerfile .
-#           docker push ${{ steps.login-ecr-flink.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG
-#           echo "image_uri=${{ steps.login-ecr-flink.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-#       - name: 7. 更新 Flink 服务
-#         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-#         with:
-#           task-definition: ${{ github.ref == 'refs/heads/main' && 'data-platform-prod-family' || 'data-platform-dev-family' }}
-#           service: ${{ github.ref == 'refs/heads/main' && 'data-platform-prod-flink-service' || 'data-platform-dev-flink-service' }}
-#           cluster: ${{ github.ref == 'refs/heads/main' && 'data-platform-prod-cluster' || 'data-platform-dev-cluster' }}
-#           container-overrides: |
-#             [
-#               { "name": "jobmanager", "image": "${{ steps.build-image-flink.outputs.image_uri }}" },
-#               { "name": "taskmanager", "image": "${{ steps.build-image-flink.outputs.image_uri }}" }
-#             ]
-#           wait-for-service-stability: true
-
-  # ===================================================================
-  # Job 2: 运行一次性的模拟数据生产者 (CLI 方案)
+  # Job : 运行一次性的模拟数据生产者
   # ===================================================================
   run-mock-data-producer:
-    name: Run Mock Data Producer (CLI method)
+    name: Run Mock Data Producer
     # 条件：当手动触发时，或当 push 事件修改了 mock_data/ 目录时运行。 弃用，改用 path:
     # if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[force producer]') || (github.event_name == 'push' && (contains(join(github.event.commits.*.modified, ' '), 'mock_data/') || contains(join(github.event.commits.*.added, ' '), 'mock_data/')))
     runs-on: ubuntu-latest
@@ -83,6 +36,8 @@ jobs:
     steps:
       - name: 1. 检出代码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
       - name: 2. 配置 AWS 身份凭证 (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -96,32 +51,59 @@ jobs:
         id: build-image-producer
         env:
           # ECR_REPOSITORY: ${{ github.ref == 'refs/heads/main' && secrets.PROD_PRODUCER_ECR_REPO || secrets.DEV_PRODUCER_ECR_REPO }}
-          IMAGE_TAG: ${{ github.sha }}
           ECR_REGISTRY: ${{ steps.login-ecr-producer.outputs.registry }}  # 注册表URI：从登录步骤获取,用这个会导致 Skip output 'image'，因为信息敏感。所以弃用改用plaintext
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && 'data-platform-prod-producer-repo' || 'data-platform-dev-producer-repo' }}  # 多环境逻辑：main用prod repo，develop用dev repo
           # ECR_REPOSITORY: ${{ github.ref_name == 'main' && secrets.PROD_ECR_REPO || secrets.DEV_ECR_REPO }}
           # 否定了用secret 的用法， 改用plaintext 的方式，因为如果用secret output，会导致 Skip output 'image'，因为信息敏感。
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}  #暂时用这个，回头如果用了在本地cd了一次后，生成了 ECR，然后再用那两个，记得要重新建立secret key
         run: |
+          # 构建自定义标签：branch + short SHA，便于追溯版本
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE_TAG="${{ github.ref_name }}-${SHORT_SHA}"
+
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f mock_data/Dockerfile .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-      
-      - name: 5a. 渲染任务定义 (填入新镜像地址)
-        id: render-task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: mock_data/task-definition.json # 使用我们新创建的模板文件
-          container-name: producer-container-name
-          image: ${{ steps.build-image-producer.outputs.image_uri }}
+          # echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: 5b. 运行一次性的 ECS 任务 (使用 AWS CLI)
-        run: |
-          echo "Running task with AWS CLI..."
-          aws ecs run-task \
-            --cluster ${{ github.ref == 'refs/heads/main' && 'data-platform-prod-cluster' || 'data-platform-dev-cluster' }} \
-            --task-definition ${{ steps.render-task-def.outputs.task-definition-arn }} \
-            --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PRIVATE_SUBNET_IDS }}],securityGroups=[${{ secrets.PRODUCER_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}" \
-            --count 1
+          # --- 新增：更新SSM参数 ---
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "Updating Mockdata image URI to: $IMAGE_URI"
+          aws ssm put-parameter \
+            --name "/data-platform/dev/ingestion/mockdata_image_url" \
+            --value "$IMAGE_URI" \
+            --type "String" \
+            --overwrite
+      
+      # - name: 5a. 渲染任务定义 (填入新镜像地址)
+      #   id: render-task-def
+      #   uses: aws-actions/amazon-ecs-render-task-definition@v1
+      #   with:
+      #     task-definition: mock_data/task-definition.json # 使用我们新创建的模板文件
+      #     container-name: mock-data-generator
+      #     image: ${{ steps.build-image-producer.outputs.image_uri }}
+      #
+      # - name: Debug Inputs for Run Task
+      #   run: |
+      #     cat mock_data/task-definition.json
+      #     echo "Rendered Task Definition ARN: ${{ steps.render-task-def.outputs.task-definition }}"
+
+      # 弃用 deprecate ， 这个是 cli 方案，但是获取不到steps.render-task-def.outputs.task-definitio的值，所以弃掉了，但其实根本不需要获取部署，因为eventbridge 它自己就能运行task definition 不需要ECS的 cluster 和 service
+      # - name: 5b. 运行一次性的 ECS 任务 (使用 AWS CLI)
+      #   run: |
+      #     echo "Running task with AWS CLI..."
+      #     aws ecs run-task \
+      #       --cluster ${{ github.ref == 'refs/heads/main' && 'data-platform-prod-cluster' || 'data-platform-dev-cluster' }} \
+      #       --task-definition ${{ steps.render-task-def.outputs.task-definition }} \
+      #       --launch-type FARGATE \
+      #       --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PRIVATE_SUBNET_IDS }}],securityGroups=[${{ secrets.PRODUCER_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}" \
+      #       --count 1
+
+      # 弃用 deprecate, 这个是部署方案，我觉得可以长期部署的，并不像用eventbridge那样定时触发。
+      # - name: Deploy to Amazon ECS service
+      #   uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+      #   with:
+      #     task-definition: ${{ steps.render-task-def.outputs.task-definition }}  # 渲染后的任务定义
+      #     service: ${{ github.ref_name == 'main' && 'data-platform-prod-producer-service' || 'data-platform-dev-producer-service' }}   # 目标服务名称
+      #     cluster: ${{ github.ref_name == 'main' && 'data-platform-prod-cluster' || 'data-platform-dev-cluster' }}  # ECS 集群名称
+          
 

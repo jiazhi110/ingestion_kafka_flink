@@ -23,5 +23,5 @@ COPY test_data/ ./test_data/
 COPY mykafka/ ./mykafka/
 
 # 6. 设置默认的启动命令
-#    执行位于 /app/mock_data/ 目录下的 user_actions_generator.py 脚本
-CMD ["python", "mock_data/user_actions_generator.py"]
+#    将 user_actions_generator 作为模块运行，以确保正确解析顶级包
+CMD ["python", "-m", "mock_data.user_actions_generator"]

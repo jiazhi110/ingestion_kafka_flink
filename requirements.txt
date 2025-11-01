@@ -14,3 +14,6 @@ kafka-python==2.0.2
 aws-msk-iam-sasl-signer-python==1.0.2
 
 confluent-kafka==2.11.0
+
+# 提供 SSL 证书，用于 AWS MSK IAM 认证
+certifi==2024.7.4

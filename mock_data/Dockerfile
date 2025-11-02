@@ -22,6 +22,12 @@ COPY test_data/ ./test_data/
 #    这样脚本就能在容器内部访问到它需要的util了
 COPY mykafka/ ./mykafka/
 
+# 5.5 复制【整个 config 文件夹】到镜像的 /app/config 目录下
+COPY config/ ./config/
+
+# 5.6 复制 SSL 证书文件到镜像根目录
+COPY AmazonRootCA1.pem ./
+
 # 6. 设置默认的启动命令
 #    将 user_actions_generator 作为模块运行，以确保正确解析顶级包
 CMD ["python", "-m", "mock_data.user_actions_generator"]

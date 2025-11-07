@@ -13,7 +13,7 @@ def get_bootstrap_servers_from_ssm(region_name='us-east-1'):
     """
     # The 'ENV' environment variable should match the 'var.environment' in your Terraform setup.
     environment = os.environ.get('ENV', 'dev') # Default to 'dev' if not set
-    parameter_name = f"/data-platform/{environment}/kafka/bootstrap_brokers_public"
+    parameter_name = f"/data-platform/{environment}/kafka/bootstrap_brokers_private"
     print(f"Fetching bootstrap servers from SSM parameter: {parameter_name}")
     try:
         ssm_client = boto3.client('ssm', region_name=region_name)

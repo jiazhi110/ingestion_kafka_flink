@@ -1,8 +1,29 @@
 import json
 import socket
+import os
+import boto3
 from confluent_kafka import Producer
 from aws_msk_iam_sasl_signer import MSKAuthTokenProvider
 import certifi   # 用作 ssl CA 的 fallback（可选但建议
+
+def get_bootstrap_servers_from_ssm(region_name='us-east-1'):
+    """
+    Fetches the Kafka bootstrap servers from AWS SSM Parameter Store.
+    The environment (e.g., 'dev', 'prod') is determined by the 'ENV' environment variable.
+    """
+    # The 'ENV' environment variable should match the 'var.environment' in your Terraform setup.
+    environment = os.environ.get('ENV', 'dev') # Default to 'dev' if not set
+    parameter_name = f"/data-platform/{environment}/kafka/bootstrap_brokers_public"
+    print(f"Fetching bootstrap servers from SSM parameter: {parameter_name}")
+    try:
+        ssm_client = boto3.client('ssm', region_name=region_name)
+        response = ssm_client.get_parameter(Name=parameter_name)
+        bootstrap_servers_value = response['Parameter']['Value']
+        print(f"Successfully fetched bootstrap servers: {bootstrap_servers_value}")
+        return bootstrap_servers_value
+    except Exception as e:
+        print(f"FATAL: Could not fetch bootstrap servers from SSM Parameter Store. Please check IAM permissions and if the parameter '{parameter_name}' exists. Error: {e}")
+        raise
 
 class MSKTokenProvider:
     def __init__(self, region):
@@ -112,4 +133,3 @@ def send_event(producer, topic, event):
         
     except Exception as e:
         print(f"Error producing message: {e}")
-

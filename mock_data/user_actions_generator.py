@@ -2,24 +2,27 @@ import json, time, random
 import yaml
 import os
 import pandas as pd
-from mykafka.kafka_utils import get_producer,send_event # 导入辅助函数
+from mykafka.kafka_utils import get_producer, send_event, get_bootstrap_servers_from_ssm # 导入辅助函数
 
-# 从配置文件加载Kafka和MinIO配置
+# --- Configuration Loading ---
+# Get project root and config path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 # 获取上层目录：dirname
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 输出的是/mnt/e/ingestion_kafka_flink/mock_data/user_actions_generator.py/../..
 config_path = os.path.join(current_dir, '..', 'config', 'kafka_config.yaml')
 
+# Load remaining config from YAML
 with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
-
 kafka_config = config['kafka']
-bootstrap_servers = kafka_config['bootstrap_servers']
 topic = kafka_config['topic']
-
-# 🔥 关键修改：获取安全配置
 security_config = kafka_config.get('security')
+
+# 🔥 Key Change: Fetch bootstrap servers dynamically from AWS SSM
+# The region is read from the security config block in kafka_config.yaml
+# region = security_config.get('region', 'us-east-1') if security_config else 'us-east-1'
+bootstrap_servers = get_bootstrap_servers_from_ssm()
 
 # 创建Kafka生产者
 producer = get_producer(bootstrap_servers, security_config)
@@ -72,6 +75,13 @@ int_fields = ['user_id', 'page_id', 'click_category_id', 'click_product_id', 'ci
 for field in int_fields:
     df[field] = pd.to_numeric(each_action_dfs[field], errors='coerce').fillna(-1).astype('int')
 
+
+#   当你执行 df.to_dict(orient='records') 时，你会得到以下结果：
+
+#    1 [
+#    2     {'Name': 'Alice', 'Age': 30, 'City': 'New York'},
+#    3     {'Name': 'Bob', 'Age': 24, 'City': 'London'}
+#    4 ]
 events = df.to_dict(orient='records')
 
 print(f"Starting to send events to Kafka topic '{topic}' on {bootstrap_servers}...")

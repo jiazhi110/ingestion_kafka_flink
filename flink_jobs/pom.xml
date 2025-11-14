@@ -75,10 +75,23 @@
             <artifactId>hadoop-client-api</artifactId>
             <version>${hadoop.version}</version>
         </dependency>
+
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-client-runtime</artifactId>
             <version>${hadoop.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>software.amazon.msk</groupId>
+            <artifactId>aws-msk-iam-auth</artifactId>
+            <version>1.1.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ssm</artifactId>
+            <version>2.38.5</version>
         </dependency>
 
 
@@ -88,13 +101,6 @@
             <artifactId>flink-s3-fs-hadoop</artifactId>
             <version>${flink.version}</version>
             <scope>provided</scope>
-        </dependency>
-
-        <!-- 在 <dependencies> 区域加入 -->
-        <dependency>
-            <groupId>software.amazon.msk</groupId>
-            <artifactId>aws-msk-iam-auth</artifactId>
-            <version>1.1.1</version>
         </dependency>
 
         <!-- test -->

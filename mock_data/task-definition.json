@@ -7,7 +7,7 @@
     "cpu": "256",
     "memory": "512",
     "executionRoleArn": "arn:aws:iam::366019841267:role/data-platform-dev-ecs-task-exec-role",
-    "taskRoleArn": "arn:aws:iam::366019841267:role/data-platform-dev-ecs-task-role",
+    "taskRoleArn": "arn:aws:iam::366019841267:role/data-platform-dev-mock-data-task-role",
     "containerDefinitions": [
         {
             "name": "mock-data-generator",

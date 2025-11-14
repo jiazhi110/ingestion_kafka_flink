@@ -7,8 +7,41 @@ import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
+// 新增：导入 AWS SDK 相关的类，用于从 Systems Manager Parameter Store 读取配置
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.ssm.SsmClient;
+import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
+import software.amazon.awssdk.services.ssm.model.GetParameterResponse;
+
 public class KafkaConsumerJob {
     public static void main(String[] args) throws Exception {
+        // 新增：定义项目名称和环境，用于构建 SSM Parameter Store 的参数路径。
+        // ⚠️ 注意：在实际生产环境中，这些值应该通过程序参数、环境变量或 Flink 配置动态传入，而不是硬编码。
+        // 请根据您的 Terraform 配置中的 var.project_name 和 var.environment 替换以下占位符。
+        String projectName = "myjustin"; // 示例值，请替换为您的实际项目名称
+        String environment = "dev";    // 示例值，请替换为您的实际环境名称
+
+        // 新增：初始化 AWS SSM 客户端，用于从 Parameter Store 获取配置
+        SsmClient ssmClient = SsmClient.builder()
+                                      .region(Region.US_EAST_1) // 替换为您的 AWS 区域，例如 Region.of("us-east-1")
+                                      .build();
+
+        // 新增：从 SSM Parameter Store 获取 Kafka Bootstrap Brokers 地址
+        String kafkaBootstrapServers = getParameter(ssmClient, String.format("/%s/%s/kafka/bootstrap_brokers_sasl_iam", projectName, environment));
+        // 新增：从 SSM Parameter Store 获取 Kafka Topic 名称
+        String kafkaTopicName = getParameter(ssmClient, String.format("/%s/%s/kafka/topic_name", projectName, environment));
+        // 新增：从 SSM Parameter Store 获取 Flink 输出的 S3 桶名称
+        String flinkOutputS3Bucket = getParameter(ssmClient, String.format("/%s/%s/s3/flink_output_bucket", projectName, environment));
+        // 新增：从 SSM Parameter Store 获取 Kafka 消费者组 ID
+        String kafkaConsumerGroupId = getParameter(ssmClient, String.format("/%s/%s/kafka/consumer_group_id", projectName, environment));
+
+        System.out.printf("===========================================获取ssm参数开始====================================================");
+        System.out.printf("kafkaBootstrapServers :"+ kafkaBootstrapServers);
+        System.out.printf("kafkaTopicName :"+ kafkaTopicName);
+        System.out.printf("flinkOutputS3Bucket :"+ flinkOutputS3Bucket);
+        System.out.printf("kafkaConsumerGroupId :"+ kafkaConsumerGroupId);
+        System.out.printf("===========================================获取ssm参数结束====================================================");
+
         // 1. 创建流执行环境
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
@@ -16,7 +49,9 @@ public class KafkaConsumerJob {
         // 对于本地文件系统 Sink，推荐使用 file:// 协议头
 //        env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink/checkpoints");
         // produce set
-        env.getCheckpointConfig().setCheckpointStorage("s3://jiazhi110-flink-staging-bucket/checkpoints/");
+        // 注释掉旧的硬编码 S3 检查点存储路径，改为从 SSM 获取的动态路径
+        // env.getCheckpointConfig().setCheckpointStorage("s3://justin-data-platform-dev-flink-output-v1/checkpoints/");
+        env.getCheckpointConfig().setCheckpointStorage("s3://" + flinkOutputS3Bucket + "/checkpoints/"); // 新增：使用动态 S3 桶作为检查点存储
         env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
 
         // 2. 创建表环境
@@ -92,13 +127,19 @@ public class KafkaConsumerJob {
                         // // produce set
                         // "    'properties.bootstrap.servers' = '" + bootstrapServers + "'" + // 直接将地址写入
                                 "'connector' = 'kafka'," +
-                                "'topic' = 'user_behavior_01'," +
-                                "'properties.bootstrap.servers' = 'b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098'," +
+                                // 注释掉旧的硬编码 topic，改为从 SSM 获取的动态 topic 名称
+                                // "'topic' = 'user_behavior_01'," +
+                                "'topic' = '" + kafkaTopicName + "'," + // 新增：使用动态获取的 Kafka Topic 名称
+                                // 注释掉旧的硬编码 bootstrap servers，改为从 SSM 获取的动态地址
+                                // "'properties.bootstrap.servers' = 'b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098'," +
+                                "'properties.bootstrap.servers' = '" + kafkaBootstrapServers + "'," + // 新增：使用动态获取的 Kafka Bootstrap Servers
                                 "'properties.security.protocol' = 'SASL_SSL'," +
                                 "'properties.sasl.mechanism' = 'AWS_MSK_IAM'," +
                                 "'properties.sasl.jaas.config' = 'software.amazon.msk.auth.iam.IAMLoginModule required;'," +
                                 "'properties.sasl.client.callback.handler.class' = 'software.amazon.msk.auth.iam.IAMClientCallbackHandler'," +
-                                "'properties.group.id' = 'flink_consumer_group'," +
+                                // 注释掉旧的硬编码 consumer group id，改为从 SSM 获取的动态 ID
+                                // "'properties.group.id' = 'flink_consumer_group'," +
+                                "'properties.group.id' = '" + kafkaConsumerGroupId + "'," + // 新增：使用动态获取的 Kafka Consumer Group ID
                                 "'scan.startup.mode' = 'latest-offset'," +
                                 "'format' = 'json'" +
                         ")"
@@ -128,7 +169,9 @@ public class KafkaConsumerJob {
                         "    'format' = 'parquet'," +
 //                        "    'path'='file:///tmp/output/user_action/'," +
                         // "    'path'='s3://flink-bucket/user_action/'," +
-                        "    'path'='s3://jiazhi110-flink-staging-bucket/user_action/'," +
+                        // 注释掉旧的硬编码 S3 路径，改为从 SSM 获取的动态 S3 桶名称
+                        // "    'path'='s3://jiazhi110-flink-staging-bucket/user_action/'," +
+                        "    'path'='s3://" + flinkOutputS3Bucket + "/user_action/'," + // 新增：使用动态获取的 S3 桶作为输出路径
                         "    'sink.rolling-policy.file-size' = '100MB'," +
                         "    'sink.rolling-policy.rollover-interval' = '1 min'," +
                         "    'sink.partition-commit.policy.kind' = 'success-file'," +
@@ -138,7 +181,6 @@ public class KafkaConsumerJob {
         System.out.println("CREATE TABLE S3Sink executed.");
 
         // 5. 定义核心 ETL 逻辑 (DML)
-        // 这一步定义了数据流图，但还未真正启动
         TableResult result = tEnv.executeSql(
                 "INSERT INTO S3Sink " +
                         "SELECT " +
@@ -169,5 +211,27 @@ public class KafkaConsumerJob {
 
         // 下面的代码将不会被执行，除非任务被取消或失败
         System.out.println("This line will only be printed if the job is cancelled or fails.");
+    }
+
+    /**
+     * 新增：辅助方法，用于从 AWS Systems Manager Parameter Store 获取参数值。
+     *
+     * @param ssmClient SsmClient 实例
+     * @param parameterName 要获取的参数名称
+     * @return 参数值
+     * @throws RuntimeException 如果参数获取失败
+     */
+    private static String getParameter(SsmClient ssmClient, String parameterName) {
+        try {
+            GetParameterRequest request = GetParameterRequest.builder()
+                                                            .name(parameterName)
+                                                            .withDecryption(true) // 如果参数是 SecureString 类型，需要解密
+                                                            .build();
+            GetParameterResponse response = ssmClient.getParameter(request);
+            return response.parameter().value();
+        } catch (Exception e) {
+            System.err.println("Error getting parameter: " + parameterName + ". Error: " + e.getMessage());
+            throw new RuntimeException("Failed to get parameter: " + parameterName, e);
+        }
     }
 }

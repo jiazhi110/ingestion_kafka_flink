@@ -25,3 +25,5 @@ ENV FLINK_CLASSPATH="/opt/flink/lib/*"
 #     echo "s3.path.style.access: true" >> /opt/flink/conf/flink-conf.yaml && \
 #     echo "s3.access-key: minioadmin" >> /opt/flink/conf/flink-conf.yaml && \
 #     echo "s3.secret-key: minioadmin" >> /opt/flink/conf/flink-conf.yaml
+
+ENTRYPOINT ["/opt/flink/bin/flink", "run", "-c", "com.myjustin.flink.KafkaConsumerJob", "/opt/flink/usrlib/my-app.jar"]

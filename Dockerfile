@@ -26,4 +26,14 @@ ENV FLINK_CLASSPATH="/opt/flink/lib/*"
 #     echo "s3.access-key: minioadmin" >> /opt/flink/conf/flink-conf.yaml && \
 #     echo "s3.secret-key: minioadmin" >> /opt/flink/conf/flink-conf.yaml
 
-ENTRYPOINT ["/opt/flink/bin/flink", "run", "-c", "com.myjustin.flink.KafkaConsumerJob", "/opt/flink/usrlib/my-app.jar"]
+# deprecate session mode!
+# ENTRYPOINT ["/opt/flink/bin/flink", "run", "-c", "com.myjustin.flink.KafkaConsumerJob", "/opt/flink/usrlib/my-app.jar"]
+
+# CMD ["flink", "run", "--jobmanager", "localhost:8081", "-c", "com.myjustin.flink.KafkaConsumerJob", "/opt/flink/usrlib/KafkaConsumerJob.jar"]
+
+# 启用application mode ，使用 standalone-job 这种方式仅仅只放在一个容器中即可。 文档：https://nightlies.apache.org/flink/flink-docs-stable/docs/deployment/resource-providers/standalone/docker/
+CMD [ \
+    "standalone-job", \
+    "--job-classname", "com.myjustin.flink.KafkaConsumerJob", \
+    "-Dfs.s3.path.style.access=true" \
+]

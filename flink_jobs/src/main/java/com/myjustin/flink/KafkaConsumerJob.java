@@ -18,7 +18,7 @@ public class KafkaConsumerJob {
         // 新增：定义项目名称和环境，用于构建 SSM Parameter Store 的参数路径。
         // ⚠️ 注意：在实际生产环境中，这些值应该通过程序参数、环境变量或 Flink 配置动态传入，而不是硬编码。
         // 请根据您的 Terraform 配置中的 var.project_name 和 var.environment 替换以下占位符。
-        String projectName = "myjustin"; // 示例值，请替换为您的实际项目名称
+        String projectName = "data-platform"; // 示例值，请替换为您的实际项目名称
         String environment = "dev";    // 示例值，请替换为您的实际环境名称
 
         // 新增：初始化 AWS SSM 客户端，用于从 Parameter Store 获取配置

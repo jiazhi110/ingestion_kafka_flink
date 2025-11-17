@@ -16,6 +16,11 @@ COPY flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar /opt/flink/usrlib/my-app.
 # 保证 lib 目录加载
 ENV FLINK_CLASSPATH="/opt/flink/lib/*"
 
+# 🔥 关键修正：为 Application Mode 的容器配置 TaskManager 的处理槽（Slot）
+#    这样，这一个容器就能同时扮演 JobManager 和 TaskManager 的角色
+RUN echo "taskmanager.numberOfTaskSlots: 1" >> /opt/flink/conf/flink-conf.yaml
+
+
 
 # 3. 🔥🔥🔥 最終的、最權威的修正：直接將 S3 設定寫入 Flink 的核心設定檔 🔥🔥🔥   本地打开它，因为会需要它执行的参数，用参数连接到minio，其他方式不行。
 #    這會強制 Flink 和它所有的元件都使用這些設定

@@ -16,9 +16,29 @@ COPY flink_jobs/target/flink-uber-job-1.0-SNAPSHOT.jar /opt/flink/usrlib/my-app.
 # 保证 lib 目录加载
 ENV FLINK_CLASSPATH="/opt/flink/lib/*"
 
-# 🔥 关键修正：为 Application Mode 的容器配置 TaskManager 的处理槽（Slot）
-#    这样，这一个容器就能同时扮演 JobManager 和 TaskManager 的角色
-RUN echo "taskmanager.numberOfTaskSlots: 1" >> /opt/flink/conf/flink-conf.yaml
+# 🔥 关键修正：为 Application Mode 的容器配置 TaskManager 的处理槽（Slot）和生产级的状态后端 (RocksDB)
+#    这样，这一个容器就能同时扮演 JobManager 和 TaskManager 的角色，并拥有健壮的状态管理能力
+# ┌──────────┬──────────────────────────────────┬────────────────────────────────────┐
+# │ 特性     │ HashMapStateBackend (记在脑子里) │ RocksDBStateBackend (写在笔记本上) │
+# ├──────────┼──────────────────────────────────┼────────────────────────────────────┤
+# │ 存储位置 │ 内存 (JVM Heap)                  │ 本地磁盘                           │
+# │ 容量     │ 小，受内存限制                   │ 大，受磁盘限制                     │
+# │ 风险     │ 极易内存溢出导致程序崩溃         │ 稳定，无内存溢出风险               │
+# │ 备份效率 │ 低，状态大时影响性能             │ 高，异步快照，不影响主流程         │
+# │ 适用场景 │ 本地测试，状态极小的玩具应用     │ 所有生产环境                       │
+# └──────────┴──────────────────────────────────┴────────────────────────────────────┘
+
+# 解决方案：切换到生产级的状态后端 RocksDB
+
+# 为了让您的应用变得健壮和可扩展，我们必须将状态后端从内存（HashMap）切换到磁盘（RocksDB）。
+
+#  * RocksDBStateBackend 是 Flink 社区官方推荐的、用于生产环境的状态后端。
+#  * 它会将状态存储在 TaskManager 的本地磁盘上，而不是内存里，从而支持非常大的状态。
+#  * 它可以异步地、在不影响数据处理的情况下，将状态快照到您配置的 S3 Checkpoint 目录中，效率和稳定性都非常高。
+
+RUN echo "taskmanager.numberOfTaskSlots: 1" >> /opt/flink/conf/flink-conf.yaml && \
+    echo "state.backend: rocksdb" >> /opt/flink/conf/flink-conf.yaml
+
 
 
 

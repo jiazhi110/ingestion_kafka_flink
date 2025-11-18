@@ -36,8 +36,10 @@ ENV FLINK_CLASSPATH="/opt/flink/lib/*"
 #  * 它会将状态存储在 TaskManager 的本地磁盘上，而不是内存里，从而支持非常大的状态。
 #  * 它可以异步地、在不影响数据处理的情况下，将状态快照到您配置的 S3 Checkpoint 目录中，效率和稳定性都非常高。
 
-RUN echo "taskmanager.numberOfTaskSlots: 1" >> /opt/flink/conf/flink-conf.yaml && \
-    echo "state.backend: rocksdb" >> /opt/flink/conf/flink-conf.yaml
+# 最后改在 terraform flink ecs 中设置这两个参数了。因为它依然报这个错误，好用的时间只维持了一分钟：Caused by: java.util.concurrent.CompletionException: org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException: Could not acquire the minimum required resources.
+
+# RUN echo "taskmanager.numberOfTaskSlots: 1" >> /opt/flink/conf/flink-conf.yaml && \
+#     echo "state.backend: rocksdb" >> /opt/flink/conf/flink-conf.yaml
 
 
 

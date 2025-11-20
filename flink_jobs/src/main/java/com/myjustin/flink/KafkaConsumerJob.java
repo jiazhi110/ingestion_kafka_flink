@@ -44,15 +44,21 @@ public class KafkaConsumerJob {
 
         // 1. 创建流执行环境
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(1);
-        env.enableCheckpointing(60000);
+        // -----------------------------------------------------------------------
+        // 🔻🔻🔻 可以注释掉的部分 (由 Terraform FLINK_PROPERTIES 接管) 🔻🔻🔻
+        // -----------------------------------------------------------------------
+        // env.setParallelism(1);
+        // env.enableCheckpointing(60000);
         // 对于本地文件系统 Sink，推荐使用 file:// 协议头
 //        env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink/checkpoints");
         // produce set
         // 注释掉旧的硬编码 S3 检查点存储路径，改为从 SSM 获取的动态路径
         // env.getCheckpointConfig().setCheckpointStorage("s3://justin-data-platform-dev-flink-output-v1/checkpoints/");
-        env.getCheckpointConfig().setCheckpointStorage("s3://" + flinkOutputS3Bucket + "/checkpoints/"); // 新增：使用动态 S3 桶作为检查点存储
-        env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+        // env.getCheckpointConfig().setCheckpointStorage("s3://" + flinkOutputS3Bucket + "/checkpoints/"); // 新增：使用动态 S3 桶作为检查点存储
+        // env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+        // -----------------------------------------------------------------------
+        // 🔺🔺🔺 注释结束 🔺🔺🔺
+        // ---------------------------------------------------------------------
 
         // 2. 创建表环境
         EnvironmentSettings settings = EnvironmentSettings.newInstance().inStreamingMode().build();

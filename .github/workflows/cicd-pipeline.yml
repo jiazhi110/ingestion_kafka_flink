@@ -82,19 +82,19 @@ jobs:
         run: |
           # 构建自定义标签：branch + short SHA，便于追溯版本
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE_TAG="${{ env.BRANCH_NAME }}-${SHORT_SHA}"
+          IMAGE_TAG="flink-${{ env.BRANCH_NAME }}-${SHORT_SHA}"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .  # 构建镜像：假设Dockerfile在root或./flink_jobs
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  # 推送版本标签
           
-          # 推送latest标签：覆盖更新，供Terraform data源拉取最新
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          # 推送flink-latest标签：覆盖更新，供Terraform data源拉取最新
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:flink-latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:flink-latest
 
           # --- 新增：更新SSM参数 --- 
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:flink-latest"
           echo "Updating Flink image URI to: $IMAGE_URI"
           aws ssm put-parameter \
-            --name "/data-platform/dev/ingestion/flink_image_url" \
+            --name "/data-platform/dev/ingestion/flink_job_image_url" \
             --value "$IMAGE_URI" \
             --type "String" \
             --overwrite

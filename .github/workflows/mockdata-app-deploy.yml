@@ -69,17 +69,20 @@ jobs:
         run: |
           # 构建自定义标签：branch + short SHA，便于追溯版本
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE_TAG="${{ github.ref_name }}-${SHORT_SHA}"
+          IMAGE_TAG="mockdata-${{ github.ref_name }}-${SHORT_SHA}"
 
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f mock_data/Dockerfile .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          # echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          
+          # 推送mockdata-latest标签：覆盖更新，供Terraform data源拉取最新
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:mockdata-latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:mockdata-latest
 
           # --- 新增：更新SSM参数 ---
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:mockdata-latest"
           echo "Updating Mockdata image URI to: $IMAGE_URI"
           aws ssm put-parameter \
-            --name "/data-platform/dev/ingestion/mockdata_image_url" \
+            --name "/data-platform/dev/ingestion/mockdata_producer_image_url" \
             --value "$IMAGE_URI" \
             --type "String" \
             --overwrite

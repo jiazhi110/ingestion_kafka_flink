@@ -14,14 +14,14 @@
         <java.version>11</java.version>
         <flink.version>1.17.2</flink.version>
         <scala.binary.version>2.12</scala.binary.version>
-        <!-- 🔥 添加 Hadoop 版本属性，保持一致性 -->
+        <!-- Add Hadoop version property for consistency -->
         <hadoop.version>3.3.1</hadoop.version>
         <junit.version>5.9.2</junit.version>
         <slf4j.version>1.7.36</slf4j.version>
     </properties>
 
     <dependencies>
-        <!-- 1. Flink 核心依赖：这些由 Flink 集群提供，必须设为 provided -->
+        <!-- 1. Flink Core Dependencies: These are provided by the Flink cluster, must be set to provided scope -->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-streaming-java</artifactId>
@@ -47,7 +47,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- 2. 连接器和格式依赖：这些需要被打包进我们的 Jar 包，所以不写 scope -->
+        <!-- 2. Connectors and Formats: These need to be bundled into our Jar, so no scope specified -->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-kafka</artifactId>
@@ -69,7 +69,7 @@
             <version>${flink.version}</version>
         </dependency>
 
-        <!-- 这个包里包含了我们缺失的 FileOutputFormat 类 -->
+        <!-- This package contains the missing FileOutputFormat class -->
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-client-api</artifactId>
@@ -101,7 +101,7 @@
         </dependency>
 
 
-        <!-- 为了未来使用 MinIO (s3://) 预先准备的依赖 -->
+        <!-- Dependencies prepared for future use with MinIO (s3://) -->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-s3-fs-hadoop</artifactId>
@@ -109,7 +109,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- test -->
+        <!-- Tests -->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-table-planner_${scala.binary.version}</artifactId>
@@ -161,7 +161,14 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- 用于某些 planner/tests 中可能会引用的断言库 -->
+        <!-- JSON parsing library (used for manual parsing in Side Output mode) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.15.2</version>
+        </dependency>
+
+        <!-- Assertion library used in some planners/tests -->
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
@@ -184,7 +191,7 @@
                 </configuration>
             </plugin>
 
-            <!-- 使用 maven-shade-plugin 来创建包含所有依赖的 Fat Jar -->
+            <!-- Use maven-shade-plugin to create a Fat Jar containing all dependencies -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -198,7 +205,7 @@
                         <configuration>
                             <artifactSet>
                                 <excludes>
-                                    <!-- 明确排除这些，避免与 Flink 核心冲突 -->
+                                    <!-- Explicitly exclude these to avoid conflicts with Flink core -->
                                     <exclude>org.apache.flink:flink-shaded-force-shading</exclude>
                                     <exclude>com.google.code.findbugs:jsr305</exclude>
                                     <exclude>org.slf4j:*</exclude>
@@ -206,7 +213,7 @@
                                 </excludes>
                             </artifactSet>
                             <filters>
-                                <!-- 过滤掉不必要的签名文件 -->
+                                <!-- Filter out unnecessary signature files -->
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <excludes>
@@ -217,8 +224,8 @@
                                 </filter>
                             </filters>
                             <transformers>
-                                <!-- 🔥 最关键的转换器：它会合并所有 Jar 包中的服务发现文件 🔥 -->
-                                <!-- 这能 100% 解决 "Could not find any format factory" 的问题 -->
+                                <!-- The most critical transformer: It merges service discovery files from all Jars -->
+                                <!-- This solves the "Could not find any format factory" issue 100% -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.myjustin.flink.KafkaConsumerJob</mainClass>

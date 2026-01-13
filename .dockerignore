@@ -1,20 +1,20 @@
-# 忽略版本控制工具的目錄
+# VCS
 .git
 .gitignore
 
-# 忽略 IDE 和編輯器的設定檔
+# IDEs
 .idea/
 .vscode/
 
-# 忽略 Maven 或 Gradle 的建置輸出目錄 (我们只复制最终的 jar)
+# Build Output
 target/
 build/
 
-# 忽略 Java 專案的原始碼，因为我们只需要 target 里的 jar
+# Java Source (Only jars are needed in build context)
 flink_jobs/src/
 
-# 其他專案相關的臨時檔或日誌檔
+# Logs
 *.log
 
-# 忽略本地的虛擬環境，永遠不要把它打包進 Docker 鏡像
+# Local Environments
 .venv/

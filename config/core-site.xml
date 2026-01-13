@@ -1,3 +1,6 @@
+<!-- 
+    Hadoop Core Configuration for Local MinIO
+-->
 <configuration>
     <property>
         <name>fs.s3a.endpoint</name>

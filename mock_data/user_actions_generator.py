@@ -1,96 +1,115 @@
 import json, time, random
-import yaml
 import os
 import pandas as pd
-from mykafka.kafka_utils import get_producer, send_event, get_bootstrap_servers_from_ssm # 导入辅助函数
+import logging
+from mykafka.kafka_utils import get_producer, send_event, get_kafka_config_from_ssm 
 
-# --- Configuration Loading ---
-# Get project root and config path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-# 获取上层目录：dirname
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 输出的是/mnt/e/ingestion_kafka_flink/mock_data/user_actions_generator.py/../..
-config_path = os.path.join(current_dir, '..', 'config', 'kafka_config.yaml')
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Load remaining config from YAML
-with open(config_path, 'r') as f:
-    config = yaml.safe_load(f)
-kafka_config = config['kafka']
-topic = kafka_config['topic']
-security_config = kafka_config.get('security')
+# --- Core Data Processing Logic (Extracted as a function for easier unit testing) ---
+def process_user_actions(raw_df):
+    """
+    Clean and transform raw user action data.
+    
+    Main logic:
+    1. Timestamp conversion (Date/Time -> Timestamp ms)
+    2. Null value handling (NaN -> -1)
+    3. Type casting (String/Int)
+    """
+    processed_df = pd.DataFrame()
 
-# 🔥 Key Change: Fetch bootstrap servers dynamically from AWS SSM
-# The region is read from the security config block in kafka_config.yaml
-# region = security_config.get('region', 'us-east-1') if security_config else 'us-east-1'
-bootstrap_servers = get_bootstrap_servers_from_ssm()
+    # 1. Transform date to timestamp (ms)
+    # Use errors='coerce' to handle invalid date formats
+    processed_df['date'] = pd.to_datetime(raw_df['date'], errors='coerce').astype('int64') // 10**6
+    processed_df['action_time'] = pd.to_datetime(raw_df['action_time'], errors='coerce').astype('int64') // 10**6
 
-# 创建Kafka生产者
-producer = get_producer(bootstrap_servers, security_config)
+    # 2. Transform string fields
+    str_fields = [
+        'session_id', 'search_keyword', 'order_category_ids',
+        'order_product_ids', 'pay_category_ids', 'pay_product_ids'
+    ]
+    for field in str_fields:
+        processed_df[field] = raw_df[field].astype('string')
 
-column_names = [
-    'date',
-    'user_id',
-    'session_id',
-    'page_id',
-    'action_time',
-    'search_keyword',
-    'click_category_id',
-    'click_product_id',
-    'order_category_ids',
-    'order_product_ids',
-    'pay_category_ids',
-    'pay_product_ids',
-    'city_id'
-]
+    # 3. Transform int fields
+    int_fields = ['user_id', 'page_id', 'click_category_id', 'click_product_id', 'city_id']
+    for field in int_fields:
+        processed_df[field] = pd.to_numeric(raw_df[field], errors='coerce').fillna(-1).astype('int')
+        
+    return processed_df
 
-#read fake data with pandas csv
-user_visit_action_df = pd.read_csv(os.path.join(project_root, "test_data", "user_visit_action.txt"), sep="\t", header=None, names=column_names)
+# --- Main Execution Logic ---
+if __name__ == "__main__":
+    # --- Configuration Loading (Cloud-Native / Hybrid Mode) ---
+    # Architecture Explanation:
+    # This project follows Cloud-Native best practices, configuration is fully managed by AWS SSM Parameter Store.
+    # For local development, it accesses SSM of Dev environment by configuring AWS credentials (Shared Credentials).
 
-# user_visit_action_df.head()
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# user_visit_action_df.info()
+    # Get configuration from SSM (Single Source of Truth)
+    try:
+        bootstrap_servers, topic = get_kafka_config_from_ssm()
+        if not bootstrap_servers or not topic:
+            raise ValueError("Failed to retrieve config from SSM")
+    except Exception as e:
+        logger.error("FATAL: Unable to load configuration from AWS SSM. Please check your AWS credentials and Region.")
+        raise e
 
-each_action_dfs = user_visit_action_df
-# each_action_dfs = user_visit_action_df.head(10)
+    logger.info(f"Successfully loaded config from SSM. Topic: {topic}")
 
-df = pd.DataFrame()
+    # Default to use AWS MSK IAM authentication
+    security_config = {
+        'mechanism': 'AWS_MSK_IAM',
+        'region': os.environ.get('AWS_REGION', 'us-east-1')
+    }
 
-#transform date to timestamp
-df['date'] = pd.to_datetime(each_action_dfs['date'], errors='coerce').astype('int64') // 10**6
-df['action_time'] = pd.to_datetime(each_action_dfs['action_time'], errors='coerce').astype('int64') // 10**6
+    # Create Kafka Producer
+    producer = get_producer(bootstrap_servers, security_config)
 
-#transform string
-str_fields = [
-    'session_id', 'search_keyword', 'order_category_ids',
-    'order_product_ids', 'pay_category_ids', 'pay_product_ids'
-]
+    column_names = [
+        'date',
+        'user_id',
+        'session_id',
+        'page_id',
+        'action_time',
+        'search_keyword',
+        'click_category_id',
+        'click_product_id',
+        'order_category_ids',
+        'order_product_ids',
+        'pay_category_ids',
+        'pay_product_ids',
+        'city_id'
+    ]
 
-for field in str_fields:
-    df[field] = each_action_dfs[field].astype('string')
+    # read fake data with pandas csv
+    data_path = os.path.join(project_root, "test_data", "user_visit_action.txt")
+    logger.info(f"Loading test data from: {data_path}")
+    
+    try:
+        user_visit_action_df = pd.read_csv(data_path, sep="\t", header=None, names=column_names)
+        
+        # Call our encapsulated logic function
+        logger.info("Processing data...")
+        df = process_user_actions(user_visit_action_df)
 
-#transform int
-int_fields = ['user_id', 'page_id', 'click_category_id', 'click_product_id', 'city_id']
+        # Convert to list of dictionaries
+        events = df.to_dict(orient='records')
 
-# 这一句的意义是 —— 到这里你已经没有 NaN了（因为填了 -1），所以就可以放心转换为 int 类型。
-for field in int_fields:
-    df[field] = pd.to_numeric(each_action_dfs[field], errors='coerce').fillna(-1).astype('int')
+        logger.info(f"Starting to send {len(events)} events to Kafka topic '{topic}' on {bootstrap_servers}...")
+        
+        for event in events:
+            send_event(producer, topic, event) # Use helper function to send
+            time.sleep(random.uniform(0.5, 1.5)) # Random wait
 
-
-#   当你执行 df.to_dict(orient='records') 时，你会得到以下结果：
-
-#    1 [
-#    2     {'Name': 'Alice', 'Age': 30, 'City': 'New York'},
-#    3     {'Name': 'Bob', 'Age': 24, 'City': 'London'}
-#    4 ]
-events = df.to_dict(orient='records')
-
-print(f"Starting to send events to Kafka topic '{topic}' on {bootstrap_servers}...")
-try:
-    for event in events:
-        send_event(producer, topic, event) # 使用辅助函数发送
-        time.sleep(random.uniform(0.5, 1.5)) # 随机等待
-except KeyboardInterrupt:
-    print("\nStopping producer...")
-finally:
-    producer.close() # 关闭生产者连接
-    print("Producer closed.")
+    except KeyboardInterrupt:
+        logger.info("Stopping producer...")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+    finally:
+        producer.close() # Close producer connection
+        logger.info("Producer closed.")

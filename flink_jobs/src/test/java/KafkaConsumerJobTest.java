@@ -20,22 +20,22 @@ import java.util.stream.StreamSupport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * 这是 Flink SQL 作业最标准、最稳定的单元测试模板。
- * 核心思想是使用 POJO 定义数据，并通过 UDF (User-Defined Function)
- * 来处理复杂的或环境不一致的行为，确保测试的健壮与清晰。
+ * Standard and stable unit test template for Flink SQL jobs.
+ * The core idea is to use POJOs to define data and UDFs (User-Defined Functions)
+ * to handle complex or inconsistent behaviors, ensuring robustness and clarity.
  */
 public class KafkaConsumerJobTest {
 
     /**
-     * 自定义的 POJO 类，用于封装测试数据。
-     * 相比 Row 类型，POJO 提供了更好的可读性和类型安全。
-     * Flink 要求 POJO 类必须是 public，且拥有一个 public 的无参构造函数。
+     * Custom POJO class for encapsulating test data.
+     * Compared to Row types, POJOs provide better readability and type safety.
+     * Flink requires POJO classes to be public and have a public no-args constructor.
      */
     public static class Event {
         public long action_time;
         public int user_id;
 
-        // Flink POJO 要求：public 无参构造函数
+        // Flink POJO requirement: public no-args constructor
         public Event() {}
 
         public Event(long action_time, int user_id) {
@@ -45,16 +45,16 @@ public class KafkaConsumerJobTest {
     }
 
     /**
-     * 创建一个用户自定义函数 (UDF) 来格式化 UTC 日期。
-     * 这个函数使用 Java 8 的标准时间库，显式指定 UTC 时区，行为完全确定，
-     * 不再依赖 Flink 底层可能不稳定的时区处理。
+     * Create a User-Defined Function (UDF) to format UTC dates.
+     * This function uses Java 8 standard time library, explicitly specifying UTC timezone,
+     * ensuring deterministic behavior and avoiding dependency on Flink's potentially unstable timezone handling.
      */
     public static class UTCDateFormatter extends ScalarFunction {
-        // 定义线程安全的格式化器
+        // Define thread-safe formatter
         private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneOffset.UTC);
         private static final DateTimeFormatter HOUR_FORMATTER = DateTimeFormatter.ofPattern("HH").withZone(ZoneOffset.UTC);
 
-        // Flink 会调用这个 'eval' 方法
+        // Flink will call this 'eval' method
         public String eval(Long timestamp_ms, String format) {
             if (timestamp_ms == null || format == null) {
                 return null;
@@ -72,72 +72,32 @@ public class KafkaConsumerJobTest {
 
     @Test
     public void testSqlTransformationLogic() throws Exception {
-        // 1. 创建测试环境
+        // 1. Create test environment
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
         EnvironmentSettings settings = EnvironmentSettings.newInstance().inStreamingMode().build();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
 
-        // 注册我们自定义的函数
+        // Register our custom function
         tEnv.createTemporarySystemFunction("UTC_DATE_FORMAT", UTCDateFormatter.class);
 
         System.out.println("System TZ: " + java.time.ZoneId.systemDefault());
         System.out.println("Flink Table TZ: " + tEnv.getConfig().getLocalTimeZone());
 
-        // 2. 准备测试数据 (模拟 KafkaSource)   error:MiniCluster is not yet running or has already been shut down.
-        // action_time: 1672531200000 对应 UTC 时间 2023-01-01 00:00:00
-        // action_time: 1672567800000 对应 UTC 时间 2023-01-01 10:10:00
-//        String createSourceTableSql = "CREATE TABLE KafkaSource (" +
-////                "    `action_time` BIGINT," +
-////                "    `user_id` INT" +
-////                // 为简化，我们只保留测试逻辑需要的字段
-////                ") WITH (" +
-////                "    'connector' = 'values'," + // 使用 'values' 连接器来创建内存表
-////                "    'bounded' = 'true'" + // 数据是有界的（bounded），插入完就结束，Flink 作业会自然结束
-////                ")";
-////        tEnv.executeSql(createSourceTableSql);
-////
-////        // 插入
-////        tEnv.executeSql(
-////                "INSERT INTO KafkaSource VALUES " +
-////                        "(1672531200000, 101), " +
-////                        "(1672567800000, 102)"
-////        ).await();
-
-        // 2. 准备测试数据 (使用 POJO，更类型安全和可读)
+        // 2. Prepare test data (Use POJO for type safety and readability)
         List<Event> testData = Arrays.asList(
                 new Event(1672531200000L, 101),
                 new Event(1672567800000L, 102)
         );
 
-        // 从 POJO 列表创建 DataStream
+        // Create DataStream from POJO list
         DataStream<Event> testDataStream = env.fromCollection(testData);
 
-        // 直接从 DataStream<POJO> 创建视图，Flink 会自动根据 POJO 的字段名推断列名
+        // Create view directly from DataStream<POJO>, Flink infers column names from POJO fields
         tEnv.createTemporaryView("KafkaSource", testDataStream);
 
-        // 我们只查询，不插入到 S3，而是将结果物化为一个 Table 对象,源代码：KafkaConsumerJob
-//        Table resultTable = tEnv.sqlQuery(
-//                "SELECT " +
-//                        "    user_id, " +
-//                        "    action_time AS action_time_ms, " +
-//                        "    DATE_FORMAT(FROM_UNIXTIME(action_time / 1000), 'yyyy-MM-dd') AS dt, " +
-//                        "    DATE_FORMAT(FROM_UNIXTIME(action_time / 1000), 'HH') AS hr " +
-//                        "FROM KafkaSource"
-//        );
-
-//        这个是用最常用的方式 tEnv.getConfig().setLocalTimeZone(ZoneId.of("UTC")); + TO_TIMESTAMP_LTZ 的方式，将两个时间同步，但是本地还是报错 ：MiniCluster is not yet running or has already been shut down.
-//        Table resultTable = tEnv.sqlQuery(
-//                "SELECT " +
-//                        "    user_id, " +
-//                        "    action_time AS action_time_ms, " +
-//                        "    DATE_FORMAT(TO_TIMESTAMP_LTZ(action_time, 3), 'yyyy-MM-dd') AS dt, " +
-//                        "    DATE_FORMAT(TO_TIMESTAMP_LTZ(action_time, 3), 'HH') AS hr " +
-//                        "FROM KafkaSource"
-//        );
-
-        // 3. 执行核心 SQL 查询逻辑
-        // 在 SQL 中使用我们自己注册的、行为100%可靠的函数
+        // 3. Execute core SQL query logic
+        // Use our own 100% reliable function in SQL
         Table resultTable = tEnv.sqlQuery(
                 "SELECT " +
                         "    user_id, " +
@@ -147,13 +107,13 @@ public class KafkaConsumerJobTest {
                         "FROM KafkaSource"
         );
 
-        // 4. 收集并验证结果
+        // 4. Collect and verify results
         CloseableIterator<Row> iterator = resultTable.execute().collect();
         Iterable<Row> iterable = () -> iterator;
         List<Row> results = StreamSupport.stream(iterable.spliterator(), false)
                 .collect(Collectors.toList());
 
-        // 5. 断言结果是否符合预期
+        // 5. Assert results match expectations
         assertEquals(2, results.size(), "Should receive two records");
         results.sort(Comparator.comparingInt(row -> (Integer) row.getField("user_id")));
 
@@ -172,4 +132,3 @@ public class KafkaConsumerJobTest {
         iterator.close();
     }
 }
-

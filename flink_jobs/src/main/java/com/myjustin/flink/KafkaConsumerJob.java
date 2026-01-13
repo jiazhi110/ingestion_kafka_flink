@@ -6,108 +6,196 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.api.StatementSet;
+// Add: DataStream API related dependencies
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
+import org.apache.flink.util.Collector;
+import org.apache.flink.util.OutputTag;
+import org.apache.flink.table.api.Schema;
+import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.types.Row;
 
-// 新增：导入 AWS SDK 相关的类，用于从 Systems Manager Parameter Store 读取配置
+// Add: Jackson JSON Parsing
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+// Add: AWS SDK classes for reading config from Systems Manager Parameter Store
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ssm.SsmClient;
 import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
 import software.amazon.awssdk.services.ssm.model.GetParameterResponse;
 
-public class KafkaConsumerJob {
-    public static void main(String[] args) throws Exception {
-        // 新增：定义项目名称和环境，用于构建 SSM Parameter Store 的参数路径。
-        // ⚠️ 注意：在实际生产环境中，这些值应该通过程序参数、环境变量或 Flink 配置动态传入，而不是硬编码。
-        // 请根据您的 Terraform 配置中的 var.project_name 和 var.environment 替换以下占位符。
-        String projectName = "data-platform"; // 示例值，请替换为您的实际项目名称
-        String environment = "dev";    // 示例值，请替换为您的实际环境名称
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-        // 新增：初始化 AWS SSM 客户端，用于从 Parameter Store 获取配置
+public class KafkaConsumerJob {
+    private static final Logger LOG = LoggerFactory.getLogger(KafkaConsumerJob.class);
+
+    public static void main(String[] args) throws Exception {
+        // Fetch project context from environment variables (Injected by Terraform/ECS)
+        String projectName = System.getenv("PROJECT_NAME");
+        String environment = System.getenv("ENVIRONMENT");
+        String awsRegion = System.getenv().getOrDefault("AWS_REGION", "us-east-1");
+
+        if (projectName == null || environment == null) {
+            LOG.error("CRITICAL ERROR: Environment variables 'PROJECT_NAME' and 'ENVIRONMENT' are not set. Application terminating.");
+            throw new RuntimeException("Missing mandatory configuration variables: PROJECT_NAME, ENVIRONMENT");
+        }
+
+        LOG.info("Starting Flink Job. Project: {}, Environment: {}, Region: {}", projectName, environment, awsRegion);
+
+        // Initialize AWS SSM Client for fetching config
         SsmClient ssmClient = SsmClient.builder()
-                                      .region(Region.US_EAST_1) // 替换为您的 AWS 区域，例如 Region.of("us-east-1")
+                                      .region(Region.of(awsRegion))
                                       .build();
 
-        // 新增：从 SSM Parameter Store 获取 Kafka Bootstrap Brokers 地址
+        // Fetch Kafka Bootstrap Brokers address from SSM Parameter Store
         String kafkaBootstrapServers = getParameter(ssmClient, String.format("/%s/%s/kafka/bootstrap_brokers_sasl_iam", projectName, environment));
-        // 新增：从 SSM Parameter Store 获取 Kafka Topic 名称
         String kafkaTopicName = getParameter(ssmClient, String.format("/%s/%s/kafka/topic_name", projectName, environment));
-        // 新增：从 SSM Parameter Store 获取 Flink 输出的 S3 桶名称
         String flinkOutputS3Bucket = getParameter(ssmClient, String.format("/%s/%s/s3/flink_output_bucket", projectName, environment));
-        // 新增：从 SSM Parameter Store 获取 Kafka 消费者组 ID
+        String flinkDlqS3Path = getParameter(ssmClient, String.format("/%s/%s/s3/flink_dlq_path", projectName, environment));
         String kafkaConsumerGroupId = getParameter(ssmClient, String.format("/%s/%s/kafka/consumer_group_id", projectName, environment));
 
-        System.out.printf("===========================================获取ssm参数开始====================================================");
-        System.out.printf("kafkaBootstrapServers :"+ kafkaBootstrapServers);
-        System.out.printf("kafkaTopicName :"+ kafkaTopicName);
-        System.out.printf("flinkOutputS3Bucket :"+ flinkOutputS3Bucket);
-        System.out.printf("kafkaConsumerGroupId :"+ kafkaConsumerGroupId);
-        System.out.printf("===========================================获取ssm参数结束====================================================");
+        LOG.info("=========================================== SSM Parameters Loaded ====================================================");
+        LOG.info("kafkaBootstrapServers : {}", kafkaBootstrapServers);
+        LOG.info("kafkaTopicName : {}", kafkaTopicName);
+        LOG.info("flinkOutputS3Bucket : {}", flinkOutputS3Bucket);
+        LOG.info("kafkaConsumerGroupId : {}", kafkaConsumerGroupId);
+        LOG.info("======================================================================================================================");
 
-        // 1. 创建流执行环境
+        // 1. Create Stream Execution Environment
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        // -----------------------------------------------------------------------
-        // 🔻🔻🔻 可以注释掉的部分 (由 Terraform FLINK_PROPERTIES 接管) 🔻🔻🔻
-        // -----------------------------------------------------------------------
-        // env.setParallelism(1);
-        // env.enableCheckpointing(60000);
-        // 对于本地文件系统 Sink，推荐使用 file:// 协议头
-//        env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink/checkpoints");
-        // produce set
-        // 注释掉旧的硬编码 S3 检查点存储路径，改为从 SSM 获取的动态路径
-        // env.getCheckpointConfig().setCheckpointStorage("s3://justin-data-platform-dev-flink-output-v1/checkpoints/");
-        // env.getCheckpointConfig().setCheckpointStorage("s3://" + flinkOutputS3Bucket + "/checkpoints/"); // 新增：使用动态 S3 桶作为检查点存储
-        // env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
-        // -----------------------------------------------------------------------
-        // 🔺🔺🔺 注释结束 🔺🔺🔺
-        // ---------------------------------------------------------------------
+        
+        // Enable Checkpointing, triggered every 60 seconds
+        env.enableCheckpointing(60000);
 
-        // 2. 创建表环境
+        // Set consistency semantics: EXACTLY_ONCE
+        env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+        
+        // Dynamic S3 bucket for checkpoint storage
+        // env.getCheckpointConfig().setCheckpointStorage("s3://" + flinkOutputS3Bucket + "/checkpoints/");
+
+        // 2. Create Table Environment
         EnvironmentSettings settings = EnvironmentSettings.newInstance().inStreamingMode().build();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
 
-//        // ECS 会将我们设置的 Secrets 注入为环境变量
-//        String mskUsername = System.getenv("msk-username");
-//        String mskPassword = System.getenv("msk-password");
-//
-//        // produce set
-//        // 1：必须提供 MSK 提供的所有 Bootstrap Servers 地址，以实现高可用 🔥
-//        String bootstrapServers = "b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9196,b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9196";
-//
-//        // 构建 JAAS 配置字符串
-//        String jaasConfig = String.format(
-//                "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
-//                mskUsername,
-//                mskPassword
-//        );
+        // ==========================================================================================
+        // Refactor Start: Use DataStream API + Side Output to implement DLQ logic
+        // ==========================================================================================
 
-//        // 获取 Flink 的底层配置对象
-//        Configuration configuration = tEnv.getConfig().getConfiguration();
-//
-//        // 将 Kafka 的安全认证配置，以编程方式设置进去
-//        configuration.setString("properties.security.protocol", "SASL_SSL");
-//        configuration.setString("properties.sasl.mechanism", "SCRAM-SHA-512");
-//        configuration.setString("properties.sasl.jaas.config", jaasConfig);
+        // 3.1 Define Side Output Tag for DLQ
+        final OutputTag<Row> dlqTag = new OutputTag<Row>("dlq-output"){};
 
-        // 🔥 关键修改：不再需要从 Secrets Manager 读取用户名和密码
+        // 3.2 Create Kafka Source using DataStream API (Read raw string)
+        KafkaSource<String> kafkaSource = KafkaSource.<String>builder()
+                .setBootstrapServers(kafkaBootstrapServers)
+                .setTopics(kafkaTopicName)
+                .setGroupId(kafkaConsumerGroupId)
+                .setStartingOffsets(OffsetsInitializer.latest())
+                .setValueOnlyDeserializer(new SimpleStringSchema()) // Read as plain text
+                // Configure IAM Authentication
+                .setProperty("security.protocol", "SASL_SSL")
+                .setProperty("sasl.mechanism", "AWS_MSK_IAM")
+                .setProperty("sasl.jaas.config", "software.amazon.msk.auth.iam.IAMLoginModule required;")
+                .setProperty("sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler")
+                .build();
 
-        // MSK 的 Bootstrap Servers 地址 (这次是 IAM 端口 9098)
-//        String bootstrapServers = "b-1-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198,b-2-public.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9198";
-        // String bootstrapServers = "b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098";
+        DataStream<String> rawStream = env.fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "Kafka Raw Source");
 
-        // // 构建 JAAS 配置字符串，使用 IAMLoginModule
-        // String jaasConfig = "software.amazon.msk.auth.iam.IAMLoginModule required;";
+        // 3.3 Use ProcessFunction for manual parsing and splitting
+        SingleOutputStreamOperator<Row> processedStream = rawStream.process(new ProcessFunction<String, Row>() {
+            private transient ObjectMapper objectMapper;
 
-        // // 获取 Flink 的底层配置对象
-        // Configuration configuration = tEnv.getConfig().getConfiguration();
+            @Override
+            public void open(Configuration parameters) throws Exception {
+                objectMapper = new ObjectMapper();
+            }
 
-        // // 设置 Kafka 的安全认证配置
-        // configuration.setString("properties.security.protocol", "SASL_SSL");
-        // configuration.setString("properties.sasl.mechanism", "AWS_MSK_IAM");
-        // configuration.setString("properties.sasl.jaas.config", jaasConfig);
-        // configuration.setString("properties.sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
+            @Override
+            public void processElement(String value, Context ctx, Collector<Row> out) throws Exception {
+                try {
+                    // Try parsing JSON
+                    JsonNode node = objectMapper.readTree(value);
 
+                    // Simple validation: e.g., user_id must exist
+                    if (!node.has("user_id") || node.get("user_id").isNull()) {
+                        throw new RuntimeException("Missing or null user_id");
+                    }
 
-        // 3. 定义 Kafka Source 表 (DDL)
-        // DDL 语句只是注册元数据，不会立即执行任务
+                    // Assemble normal data Row (Order must match MainDataSchema below)
+                    Row row = Row.of(
+                        node.get("user_id").asInt(),
+                        node.has("session_id") ? node.get("session_id").asText() : null,
+                        node.has("page_id") ? node.get("page_id").asInt() : null,
+                        node.has("action_time") ? node.get("action_time").asLong() : null,
+                        node.has("search_keyword") ? node.get("search_keyword").asText() : null,
+                        node.has("click_category_id") ? node.get("click_category_id").asInt() : null,
+                        node.has("click_product_id") ? node.get("click_product_id").asInt() : null,
+                        node.has("order_category_ids") ? node.get("order_category_ids").asText() : null,
+                        node.has("order_product_ids") ? node.get("order_product_ids").asText() : null,
+                        node.has("pay_category_ids") ? node.get("pay_category_ids").asText() : null,
+                        node.has("pay_product_ids") ? node.get("pay_product_ids").asText() : null,
+                        node.has("city_id") ? node.get("city_id").asInt() : null
+                    );
+                    
+                    // Send to Main Output
+                    out.collect(row);
+
+                } catch (Exception e) {
+                    // Send to Side Output (DLQ)
+                    // Row structure: raw_message, error_message, processing_time
+                    Row errorRow = Row.of(
+                        value, // Raw message
+                        e.getMessage(), // Error message
+                        java.time.LocalDateTime.now() // Current processing time
+                    );
+                    ctx.output(dlqTag, errorRow);
+                }
+            }
+        });
+
+        // 3.4 Get Side Output Stream (DLQ Stream)
+        DataStream<Row> dlqStream = processedStream.getSideOutput(dlqTag);
+
+        // 3.5 Convert Main Stream to Table, and register as temporary view
+        Schema mainDataSchema = Schema.newBuilder()
+                .column("user_id", DataTypes.INT())
+                .column("session_id", DataTypes.STRING())
+                .column("page_id", DataTypes.INT())
+                .column("action_time", DataTypes.BIGINT())
+                .column("search_keyword", DataTypes.STRING())
+                .column("click_category_id", DataTypes.INT())
+                .column("click_product_id", DataTypes.INT())
+                .column("order_category_ids", DataTypes.STRING())
+                .column("order_product_ids", DataTypes.STRING())
+                .column("pay_category_ids", DataTypes.STRING())
+                .column("pay_product_ids", DataTypes.STRING())
+                .column("city_id", DataTypes.INT())
+                .build();
+        
+        Table mainTable = tEnv.fromDataStream(processedStream, mainDataSchema);
+        tEnv.createTemporaryView("MainDataView", mainTable);
+
+        // 3.6 Convert Side Output Stream to Table, and register as temporary view
+        Schema dlqDataSchema = Schema.newBuilder()
+                .column("raw_message", DataTypes.STRING())
+                .column("error_message", DataTypes.STRING())
+                .column("processing_time", DataTypes.TIMESTAMP(3))
+                .build();
+        
+        Table dlqTable = tEnv.fromDataStream(dlqStream, dlqDataSchema);
+        tEnv.createTemporaryView("DlqDataView", dlqTable);
+
+        // 3.7 (Old KafkaSource DDL commented out)
+        // 3.7 (注释掉旧的 KafkaSource DDL)
+        /*
         tEnv.executeSql(
                 "CREATE TABLE KafkaSource (" +
                         "    `date` BIGINT," +
@@ -150,11 +238,12 @@ public class KafkaConsumerJob {
                                 "'format' = 'json'" +
                         ")"
         );
-        System.out.println("CREATE TABLE KafkaSource executed.");
+        */
 
-        // 4. 定义本地文件系统 Sink 表 (DDL)
+        // 4. Define Local Filesystem Sink Table (DDL) - Unchanged
+        // 4. 定义本地文件系统 Sink 表 (DDL) - 保持不变
         tEnv.executeSql(
-                "CREATE TABLE S3Sink (" + // 为了清晰，改个名字
+                "CREATE TABLE S3Sink (" + 
                         "    user_id INT," +
                         "    session_id STRING," +
                         "    page_id INT," +
@@ -173,21 +262,36 @@ public class KafkaConsumerJob {
                         "WITH (" +
                         "    'connector' = 'filesystem'," +
                         "    'format' = 'parquet'," +
-//                        "    'path'='file:///tmp/output/user_action/'," +
-                        // "    'path'='s3://flink-bucket/user_action/'," +
-                        // 注释掉旧的硬编码 S3 路径，改为从 SSM 获取的动态 S3 桶名称
-                        // "    'path'='s3://jiazhi110-flink-staging-bucket/user_action/'," +
-                        "    'path'='s3://" + flinkOutputS3Bucket + "/user_action/'," + // 新增：使用动态获取的 S3 桶作为输出路径
+                        "    'path'='s3://" + flinkOutputS3Bucket + "/user_action/'," + // Use dynamic S3 bucket
                         "    'sink.rolling-policy.file-size' = '100MB'," +
-                        "    'sink.rolling-policy.rollover-interval' = '1 min'," +
+                        "    'sink.rolling-policy.rollover-interval' = '1 min'," + 
                         "    'sink.partition-commit.policy.kind' = 'success-file'," +
                         "    'sink.partition-commit.trigger' = 'process-time'" +
                         ")"
         );
-        System.out.println("CREATE TABLE S3Sink executed.");
+        LOG.info("CREATE TABLE S3Sink executed.");
 
-        // 5. 定义核心 ETL 逻辑 (DML)
-        TableResult result = tEnv.executeSql(
+        // 6. Define DLQ Sink Table (DDL)
+        tEnv.executeSql(
+                "CREATE TABLE DLQSink (" +
+                        "    raw_message STRING," +
+                        "    error_message STRING," +
+                        "    processing_time TIMESTAMP(3)" +
+                        ") WITH (" +
+                        "    'connector' = 'filesystem'," +
+                        "    'format' = 'json'," +
+                        "    'path' = '" + flinkDlqS3Path + "'," +
+                        "    'sink.rolling-policy.file-size' = '100MB'," +
+                        "    'sink.rolling-policy.rollover-interval' = '1 min'" +
+                        ")"
+        );
+        LOG.info("CREATE TABLE DLQSink executed.");
+
+        // 7. Define Core ETL Logic (DML)
+        StatementSet statementSet = tEnv.createStatementSet();
+
+        // Normal Data Write: Read from MainDataView
+        statementSet.addInsertSql(
                 "INSERT INTO S3Sink " +
                         "SELECT " +
                         "    user_id, " +
@@ -204,39 +308,42 @@ public class KafkaConsumerJob {
                         "    city_id, " +
                         "    DATE_FORMAT(FROM_UNIXTIME(action_time / 1000), 'yyyy-MM-dd') AS dt, " +
                         "    DATE_FORMAT(FROM_UNIXTIME(action_time / 1000), 'HH') AS hr " +
-                        "FROM KafkaSource"
+                        "FROM MainDataView"
         );
-        System.out.println("INSERT INTO statement has been submitted to the job graph.");
 
-        // 🔥 6. 真正启动并执行 Flink 任务 🔥
-        // 这是最重要的、被您注释掉的一行。它会阻塞 main 线程，让 Flink 任务持续运行。
-        // 我们不再需要 env.execute()，因为 tEnv.executeSql("INSERT...") 已经提交了任务。
-        // 我们需要调用 result.await() 来等待任务完成（对于流处理，这意味着永远等待）。
-        System.out.println("Flink job graph defined. Now waiting for the job to run and finish...");
+        // Error Data Write: Read from DlqDataView
+        statementSet.addInsertSql(
+                "INSERT INTO DLQSink " +
+                        "SELECT " +
+                        "    raw_message, " +
+                        "    error_message, " +
+                        "    processing_time " +
+                        "FROM DlqDataView"
+        );
+
+        LOG.info("StatementSet defined. Submitting Flink Job...");
+        TableResult result = statementSet.execute();
         result.await();
-
-        // 下面的代码将不会被执行，除非任务被取消或失败
-        System.out.println("This line will only be printed if the job is cancelled or fails.");
     }
 
     /**
-     * 新增：辅助方法，用于从 AWS Systems Manager Parameter Store 获取参数值。
+     * Add: Helper method to fetch parameter value from AWS Systems Manager Parameter Store.
      *
-     * @param ssmClient SsmClient 实例
-     * @param parameterName 要获取的参数名称
-     * @return 参数值
-     * @throws RuntimeException 如果参数获取失败
+     * @param ssmClient SsmClient instance
+     * @param parameterName Name of the parameter to fetch
+     * @return Parameter value
+     * @throws RuntimeException If parameter fetching fails
      */
     private static String getParameter(SsmClient ssmClient, String parameterName) {
         try {
             GetParameterRequest request = GetParameterRequest.builder()
                                                             .name(parameterName)
-                                                            .withDecryption(true) // 如果参数是 SecureString 类型，需要解密
+                                                            .withDecryption(true) // Decrypt if parameter is SecureString
                                                             .build();
             GetParameterResponse response = ssmClient.getParameter(request);
             return response.parameter().value();
         } catch (Exception e) {
-            System.err.println("Error getting parameter: " + parameterName + ". Error: " + e.getMessage());
+            LOG.error("Error getting parameter: {}. Error: {}", parameterName, e.getMessage());
             throw new RuntimeException("Failed to get parameter: " + parameterName, e);
         }
     }

@@ -1,16 +1,47 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
-.vscode/
-#Cache folder
-nppBackup/
-.ipynb
-
-#venv
-venv-ingestion/
-
-#editor
+# --- IDEs ---
 .idea/
+.vscode/
+*.swp
+*.swo
 
-#monio
+# --- Java / Maven ---
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+dependency-reduced-pom.xml
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+venv-ingestion/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.ipynb_checkpoints/
+.pytest_cache/
+
+# --- Project Specific ---
+nppBackup/
 minio_data/
+*.log
+.claude/
+*.ipynb
+
+# --- Local Development Artifacts (Hidden for Cloud-Native Repo) ---
+config/
+scripts/
+docker-compose.yml
+
+# --- OS ---
+.DS_Store
+Thumbs.db

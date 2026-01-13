@@ -23,8 +23,8 @@ kafka:
   #   protocol: 'SASL_SSL'
   #   mechanism: 'SCRAM-SHA-512'
   #   # 这两个值对应您在 Secrets Manager 中创建的用户名和密码
-  #   username: 'flink-user' 
-  #   password: 'jiazhi' 
+  #   username: 'REPLACE_WITH_USERNAME' 
+  #   password: 'REPLACE_WITH_PASSWORD' 
   #   cafile: 'AmazonRootCA1.pem'
 
   # 改成 IAM模式

@@ -1,33 +1,34 @@
-# 使用一个精简的 Python 镜像作为基础
+# Use a minimal Python image as base
 FROM python:3.9-slim
 
-# 设置工作目录，后续的 COPY 和 CMD 都在这个目录下执行
+# Set working directory
 WORKDIR /app
 
-# 1. 复制【仓库根目录】下的 requirements.txt 到镜像中
+# 1. Copy requirements.txt from repository root
 COPY requirements.txt ./
 
-# 2. 安装所有依赖
-#    --no-cache-dir 选项可以减小镜像体积
-RUN pip install --no-cache-dir -r requirements.txt
+# 2. Install dependencies and configure AWS Root CA
+#    --no-cache-dir reduces image size
+#    Cleanup apt cache and temporary files to keep the image minimal
+RUN apt-get update && apt-get install -y ca-certificates wget && \
+    wget -O /usr/local/share/ca-certificates/AmazonRootCA1.crt https://www.amazontrust.com/repository/AmazonRootCA1.pem && \
+    update-ca-certificates && \
+    pip install --no-cache-dir -r requirements.txt && \
+    apt-get purge -y --auto-remove wget && \
+    rm -rf /var/lib/apt/lists/*
 
-# 3. 复制【整个 mock_data 文件夹】到镜像的 /app/mock_data 目录下
+# 3. Create non-root user for enhanced security
+RUN useradd -m python-user
+USER python-user
+
+# 4. Copy source code modules
+# Config directory is omitted as app uses Cloud-Native SSM mode
+COPY mykafka/ ./mykafka/
 COPY mock_data/ ./mock_data/
-
-# 4. 复制【整个 test_data 文件夹】到镜像的 /app/test_data 目录下
-#    这样脚本就能在容器内部访问到它需要的数据文件了
 COPY test_data/ ./test_data/
 
-# 5. 复制【整个 mykafka 文件夹】到镜像的 /app/mykafka 目录下
-#    这样脚本就能在容器内部访问到它需要的util了
-COPY mykafka/ ./mykafka/
+# 5. Ensure modules are discoverable
+ENV PYTHONPATH=/app
 
-# 5.5 复制【整个 config 文件夹】到镜像的 /app/config 目录下
-COPY config/ ./config/
-
-# 5.6 复制 SSL 证书文件到镜像根目录
-COPY AmazonRootCA1.pem ./
-
-# 6. 设置默认的启动命令
-#    将 user_actions_generator 作为模块运行，以确保正确解析顶级包
+# 6. Default startup command
 CMD ["python", "-m", "mock_data.user_actions_generator"]

@@ -1,6 +1,6 @@
-# CI/CD pipeline for Mock Data Generator (Build & Push)
-# producer
-name: Deploy Data Applications to ECS
+# CI/CD pipeline for Mock Data Simulator (Build & Push)
+
+name: Data Simulator Build & Push
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - develop
     paths:
       - 'mock_data/**'
-      - '.github/workflows/mockdata-app-deploy.yml'
+      - '.github/workflows/data-simulator-pipeline.yml'
   workflow_dispatch:
     inputs:
       branch:

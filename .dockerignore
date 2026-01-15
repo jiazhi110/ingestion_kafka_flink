@@ -10,9 +10,6 @@
 target/
 build/
 
-# Java Source (Only jars are needed in build context)
-flink_jobs/src/
-
 # Logs
 *.log
 

@@ -54,24 +54,26 @@ jobs:
         id: login-ecr-producer
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Get ECR Repo Name
+        id: get-repo-name
+        run: |
+          REPO_NAME=$(aws ssm get-parameter --name "/data-platform/shared/ecr/mock_data_repo_name" --query "Parameter.Value" --output text)
+          echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
+
       - name: Build and Push Docker Image
         id: build-image-producer
         env:
           ECR_REGISTRY: ${{ steps.login-ecr-producer.outputs.registry }}
-          ECR_REPOSITORY: 'ingestion_kafka_flink'
-          BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref_name }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE_TAG="mockdata-${{ env.BRANCH_NAME }}-${SHORT_SHA}"
+          IMAGE_TAG="${SHORT_SHA}"
 
+          echo "Building docker image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f mock_data/Dockerfile .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:mockdata-latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:mockdata-latest
-
-          # Update SSM Parameter
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:mockdata-latest"
+          # Update SSM Parameter with the specific version (Immutable infrastructure pattern)
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           echo "Updating Mockdata image URI to: $IMAGE_URI"
           aws ssm put-parameter \
             --name "/data-platform/dev/ingestion/mockdata_producer_image_url" \

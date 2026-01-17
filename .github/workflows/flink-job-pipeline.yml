@@ -54,24 +54,26 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Get ECR Repo Name
+        id: get-repo-name
+        run: |
+          REPO_NAME=$(aws ssm get-parameter --name "/data-platform/shared/ecr/producer_repo_name" --query "Parameter.Value" --output text)
+          echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
+
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref_name }}
-          ECR_REPOSITORY: 'ingestion_kafka_flink'
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE_TAG="flink-${{ env.BRANCH_NAME }}-${SHORT_SHA}"
+          IMAGE_TAG="${SHORT_SHA}"
           
+          echo "Building docker image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:flink-latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:flink-latest
-
-          # Update SSM Parameter
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:flink-latest"
+          # Update SSM Parameter with the specific version (Immutable infrastructure pattern)
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           echo "Updating Flink image URI in SSM to: $IMAGE_URI"
           aws ssm put-parameter \
             --name "/data-platform/dev/ingestion/flink_job_image_url" \

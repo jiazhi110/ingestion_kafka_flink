@@ -57,7 +57,7 @@ jobs:
       - name: Get ECR Repo Name
         id: get-repo-name
         run: |
-          REPO_NAME=$(aws ssm get-parameter --name "/data-platform/shared/ecr/producer_repo_name" --query "Parameter.Value" --output text)
+          REPO_NAME=$(aws ssm get-parameter --name "/data-platform/dev/ecr/producer_repo_name" --query "Parameter.Value" --output text)
           echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
 
       - name: Build, tag, and push image to Amazon ECR

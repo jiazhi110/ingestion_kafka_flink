@@ -8,6 +8,8 @@
 target/
 *.class
 *.jar
+!flink_lib/aws-msk-iam-auth-1.1.1.jar
+!flink_lib/flink-s3-fs-hadoop/*.jar
 *.war
 *.ear
 *.zip

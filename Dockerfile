@@ -40,6 +40,6 @@ USER flink
 # 启用application mode ，使用 standalone-job 这种方式仅仅只放在一个容器中即可。 文档：https://nightlies.apache.org/flink/flink-docs-stable/docs/deployment/resource-providers/standalone/docker/
 CMD [ \
     "standalone-job", \
-    "--job-classname", "com.myjustin.flink.KafkaConsumerJob", \
+    "--job-classname", "com.myjustin.flink.job.KafkaConsumerJob", \
     "-Dfs.s3.path.style.access=true" \
 ]

@@ -10,6 +10,7 @@ on:
     paths:
       - 'flink_jobs/**'
       - 'Dockerfile'
+      - '.github/workflows/flink-job-pipeline.yml'
   workflow_dispatch:
     inputs:
       branch:

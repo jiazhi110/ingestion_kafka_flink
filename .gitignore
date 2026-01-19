@@ -40,7 +40,7 @@ minio_data/
 *.ipynb
 
 # --- Local Development Artifacts (Hidden for Cloud-Native Repo) ---
-config/
+/config/
 scripts/
 docker-compose.yml
 

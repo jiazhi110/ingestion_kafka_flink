@@ -86,58 +86,19 @@ public class KafkaConsumerJob {
             "FROM MainDataView"
         );
 
-        // Write DLQ Data
-        statementSet.addInsertSql("INSERT INTO DLQSink SELECT * FROM DlqDataView");
+        // Write DLQ Data: Use explicit CAST for processing_time to avoid RAW type issues
+        statementSet.addInsertSql(
+            "INSERT INTO DLQSink " +
+            "SELECT " +
+            "    raw_message, " +
+            "    error_message, " +
+            "    CAST(processing_time AS STRING) AS processing_time " +
+            "FROM DlqDataView"
+        );
 
         LOG.info("Submitting Flink Job...");
         statementSet.execute().await();
     }
-
-        // (Old KafkaSource DDL commented out)
-        /*
-        tEnv.executeSql(
-                "CREATE TABLE KafkaSource (" +
-                        "    `date` BIGINT," +
-                        "    user_id INT," +
-                        "    session_id STRING," +
-                        "    page_id INT," +
-                        "    action_time BIGINT," +
-                        "    search_keyword STRING," +
-                        "    click_category_id INT," +
-                        "    click_product_id INT," +
-                        "    order_category_ids STRING," +
-                        "    order_product_ids STRING," +
-                        "    pay_category_ids STRING," +
-                        "    pay_product_ids STRING," +
-                        "    city_id INT" +
-                        ") WITH (" +
-                        // "    'connector' = 'kafka'," +
-                        // "    'topic' = 'user_behavior'," +
-                        // // "    'properties.bootstrap.servers' = 'kafka:9093'," +
-                        // "    'properties.group.id' = 'flink_consumer_group'," +
-                        // "    'scan.startup.mode' = 'latest-offset'," +
-                        // "    'format' = 'json'," +
-                        // // produce set
-                        // "    'properties.bootstrap.servers' = '" + bootstrapServers + "'" + // 直接将地址写入
-                                "'connector' = 'kafka'," +
-                                // 注释掉旧的硬编码 topic，改为从 SSM 获取的动态 topic 名称
-                                // "'topic' = 'user_behavior_01'," +
-                                "'topic' = '" + kafkaTopicName + "'," + // 新增：使用动态获取的 Kafka Topic 名称
-                                // 注释掉旧的硬编码 bootstrap servers，改为从 SSM 获取的动态地址
-                                // "'properties.bootstrap.servers' = 'b-1.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098,b-2.flinkstagingkafkaclus.oj6v2z.c23.kafka.us-east-1.amazonaws.com:9098'," +
-                                "'properties.bootstrap.servers' = '" + kafkaBootstrapServers + "'," + // 新增：使用动态获取的 Kafka Bootstrap Servers
-                                "'properties.security.protocol' = 'SASL_SSL'," +
-                                "'properties.sasl.mechanism' = 'AWS_MSK_IAM'," +
-                                "'properties.sasl.jaas.config' = 'software.amazon.msk.auth.iam.IAMLoginModule required;'," +
-                                "'properties.sasl.client.callback.handler.class' = 'software.amazon.msk.auth.iam.IAMClientCallbackHandler'," +
-                                // 注释掉旧的硬编码 consumer group id，改为从 SSM 获取的动态 ID
-                                // "'properties.group.id' = 'flink_consumer_group'," +
-                                "'properties.group.id' = '" + kafkaConsumerGroupId + "'," + // 新增：使用动态获取的 Kafka Consumer Group ID
-                                "'scan.startup.mode' = 'latest-offset'," +
-                                "'format' = 'json'" +
-                        ")"
-        );
-        */
 
     private static void createS3SinkTable(StreamTableEnvironment tEnv, String bucket) {
         tEnv.executeSql(
@@ -174,7 +135,7 @@ public class KafkaConsumerJob {
             "CREATE TABLE DLQSink (" +
             "    raw_message STRING," +
             "    error_message STRING," +
-            "    processing_time TIMESTAMP(3)" +
+            "    processing_time STRING" +
             ") WITH (" +
             "    'connector' = 'filesystem'," +
             "    'format' = 'json'," +

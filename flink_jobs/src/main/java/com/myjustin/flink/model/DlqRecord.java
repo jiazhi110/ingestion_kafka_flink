@@ -1,10 +1,13 @@
 package com.myjustin.flink.model;
 
+import org.apache.flink.table.annotation.DataTypeHint;
 import java.time.LocalDateTime;
 
 public class DlqRecord {
     public String raw_message;
     public String error_message;
+    
+    @DataTypeHint("TIMESTAMP(3)")
     public LocalDateTime processing_time;
 
     public DlqRecord() {}

@@ -1,26 +1,26 @@
-1 北京 华北
-2 上海 华东
-3 深圳 华南
-4 广州 华南
-5 武汉 华中
-6 南京 华东
-7 天津 华北
-8 成都 西南
-9 哈尔滨 东北
-10 大连 东北
-11 沈阳 东北
-12 西安 西北
-13 长沙 华中
-14 重庆 西南
-15 济南 华东
-16 石家庄 华北
-17 银川 西北
-18 杭州 华东
-19 保定 华北
-20 福州 华南
-21 贵阳 西南
-22 青岛 华东
-23 苏州 华东
-24 郑州 华北
-25 无锡 华东
-26 厦门 华南
+1 Beijing North China
+2 Shanghai East China
+3 Shenzhen South China
+4 Guangzhou South China
+5 Wuhan Central China
+6 Nanjing East China
+7 Tianjin North China
+8 Chengdu Southwest China
+9 Harbin Northeast China
+10 Dalian Northeast China
+11 Shenyang Northeast China
+12 Xi'an Northwest China
+13 Changsha Central China
+14 Chongqing Southwest China
+15 Jinan East China
+16 Shijiazhuang North China
+17 Yinchuan Northwest China
+18 Hangzhou East China
+19 Baoding North China
+20 Fuzhou South China
+21 Guiyang Southwest China
+22 Qingdao East China
+23 Suzhou East China
+24 Zhengzhou North China
+25 Wuxi East China
+26 Xiamen South China

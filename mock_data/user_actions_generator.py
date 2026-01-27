@@ -103,8 +103,23 @@ if __name__ == "__main__":
         logger.info(f"Starting to send {len(events)} events to Kafka topic '{topic}' on {bootstrap_servers}...")
         
         for event in events:
-            send_event(producer, topic, event) # Use helper function to send
-            time.sleep(random.uniform(0.5, 1.5)) # Random wait
+            # --- Resilience & Negative Testing: Inject Dirty Data (5% probability) ---
+            dice = random.random()
+            if dice < 0.02:
+                # Type A: Malformed JSON (Total Garbage)
+                garbage_msg = "GARBAGE_DATA_LOG_#%*&^!"
+                producer.send(topic, value=garbage_msg.encode('utf-8'))
+                logger.warning(f"Injected Malformed JSON: {garbage_msg}")
+            elif dice < 0.05:
+                # Type B: Logical Error (Missing user_id)
+                event['user_id'] = None
+                send_event(producer, topic, event)
+                logger.warning(f"Injected Null user_id for session: {event.get('session_id')}")
+            else:
+                # Normal Data
+                send_event(producer, topic, event)
+            
+            time.sleep(random.uniform(0.1, 0.5))
 
     except KeyboardInterrupt:
         logger.info("Stopping producer...")

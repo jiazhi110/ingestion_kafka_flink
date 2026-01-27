@@ -40,13 +40,13 @@ flowchart LR
         K -->|Consume| F1[Flink Source]
         F1 -->|Map & Validate| F2[Transformation]
         
-        F2 -->|Valid Records| F3[S3 Sink (Parquet)]
-        F2 -->|Invalid/Error| F4[DLQ Sink (JSON)]
+        F2 -->|Valid Records| F3["S3 Sink (Parquet)"]
+        F2 -->|Invalid/Error| F4["DLQ Sink (JSON)"]
     end
 
     subgraph Storage [Data Lake]
-        F3 --> S3_Gold[(S3: Processed Data)]
-        F4 --> S3_DLQ[(S3: DLQ)]
+        F3 --> S3_Gold[("S3: Processed Data")]
+        F4 --> S3_DLQ[("S3: DLQ")]
     end
 
     style K fill:#f9f,stroke:#333,stroke-width:2px
